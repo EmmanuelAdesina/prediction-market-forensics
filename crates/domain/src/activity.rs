@@ -126,8 +126,13 @@ pub struct SourceFill {
     pub size: Decimal,
     /// USDC notional (may be `size * price` up to rounding by the source).
     pub usdc_size: Decimal,
-    /// Execution price, always in `[0, 1]`.
+    /// Execution price, always in `[0, 1]` — the source's displayed view
+    /// (observed: floor-rounded to 2 decimals on some rows).
     pub price: Decimal,
+    /// Exact per-share price implied by source amounts, `usdc_size / size`.
+    /// Used for cost basis (matches Polymarket's own `avg_price` semantics);
+    /// `price` stays in the identity composite for source stability.
+    pub exec_price: Decimal,
     pub outcome_index: i64,
     pub outcome: String,
     /// Market-scoped denormalized metadata from the activity record.
@@ -179,15 +184,36 @@ impl SourceFill {
         let size = dec_from_json_f64("size", raw.size)?;
         let usdc = dec_from_json_f64("usdc_size", raw.usdc_size)?;
 
-        // Aid/comparability check only — the API's own arithmetic may round;
-        // a large divergence (>5%) suggests a malformed record.
+        // Consistency analysis between the two source-provided price views:
+        // `price` (possibly displayed/rounded) and `usdc_size` (exact notional).
         let implied = price * size;
-        if usdc > Decimal::ZERO
-            && implied > Decimal::ZERO
-            && (usdc - implied).abs() / implied > Decimal::new(5, 2)
-        {
+        if usdc <= Decimal::ZERO || implied <= Decimal::ZERO {
             return Err(IngestionError::Validation(format!(
-                "usdc_size {usdc} diverges (>5%) from price*size {implied}"
+                "usdc_size {usdc} and price*size {implied} must both be positive"
+            )));
+        }
+
+        // Exact execution price implied by the source amounts: usdc/size.
+        // This is source-derived arithmetic, not fabrication — but only
+        // trustworthy when the displayed price corroborates it.
+        let exec_price = usdc / size;
+
+        // Accept when either (a) usdc ≈ price*size within 5% (f64-rounding
+        // tolerance for source arithmetic), or (b) the displayed price is the
+        // 2-decimal floor of the exact price (observed source behavior:
+        // `price` is floor₂(usdc/size) while usdc keeps full precision).
+        let exact_floor_ok = price <= exec_price
+            && exec_price < price + Decimal::new(1, 2)
+            && (usdc - implied).abs() / implied > Decimal::new(5, 2);
+        let tolerance_ok = (usdc - implied).abs() / implied <= Decimal::new(5, 2);
+        if !exact_floor_ok && !tolerance_ok {
+            // Outside any verified interpretation: cash notional exceeds
+            // every reconcilable price view. Preserved raw upstream, rejected
+            // here (documented: fee-premium suspect rows await the
+            // fee-schedule verification referenced in the risk register).
+            return Err(IngestionError::Validation(format!(
+                "usdc_size {usdc} is inconsistent with price {price} × size {size} \
+                 (exactiable price {exec_price} is not the 2dp floor of the displayed price)"
             )));
         }
 
@@ -211,6 +237,7 @@ impl SourceFill {
             size,
             usdc_size: usdc,
             price,
+            exec_price,
             outcome_index: raw.outcome_index,
             outcome: raw.outcome.clone(),
             market_title: raw.title.clone(),

@@ -30,7 +30,9 @@ enum Command {
     IngestMarkets {
         limit: Option<u64>,
     },
-    ClassifyMarkets,
+    ClassifyMarkets {
+        reset: bool,
+    },
     ReconstructPositions,
     ReconcilePositions,
     Report,
@@ -45,7 +47,8 @@ COMMANDS:
   ingest-wallet [--full|--resume] [--limit N] [--max-pages N]
                                          Acquire wallet activity (Data API v2).
   ingest-markets [--limit N]             Enrich market metadata (CLOB + Gamma).
-  classify-markets                       Run the crypto classifier on unclassified markets.
+  classify-markets [--reset]             Run the crypto classifier; --reset re-evaluates
+                                         all recorded classifications (use after re-enrichment).
   reconstruct-positions                  Rebuild FIFO positions from persisted fills.
   reconcile-positions                    Compare reconstruction against /v2/positions.
   report                                 Print a data-foundation status report."
@@ -82,7 +85,9 @@ fn parse_args() -> Result<Cli, String> {
         Some("ingest-markets") => Command::IngestMarkets {
             limit: flag_value_u64(&flags, "--limit"),
         },
-        Some("classify-markets") => Command::ClassifyMarkets,
+        Some("classify-markets") => Command::ClassifyMarkets {
+            reset: flags.iter().any(|f| f == "--reset"),
+        },
         Some("reconstruct-positions") => Command::ReconstructPositions,
         Some("reconcile-positions") => Command::ReconcilePositions,
         Some("report") => Command::Report,
@@ -144,7 +149,7 @@ async fn main() {
             max_pages,
         } => commands::ingest_wallet(&cfg, *full, *limit, *max_pages).await,
         Command::IngestMarkets { limit } => commands::ingest_markets(&cfg, *limit).await,
-        Command::ClassifyMarkets => commands::classify_markets(&cfg),
+        Command::ClassifyMarkets { reset } => commands::classify_markets(&cfg, *reset),
         Command::ReconstructPositions => commands::reconstruct_positions(&cfg),
         Command::ReconcilePositions => commands::reconcile_positions(&cfg).await,
         Command::Report => commands::report(&cfg),

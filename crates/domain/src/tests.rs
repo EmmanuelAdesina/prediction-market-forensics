@@ -72,6 +72,36 @@ fn price_preserved_exactly_via_string_path() {
 }
 
 #[test]
+fn display_price_floor_rows_are_accepted() {
+    // Verified source behavior: `price` is floor₂(usdc_size/size) on some rows
+    // while `usdc_size` carries the exact notional. Such rows are accepted and
+    // the exact per-share price is derived from source amounts.
+    let mut raw = sample_raw();
+    raw.price = 0.15_f64;
+    raw.size = 1010.0_f64;
+    raw.usdc_size = 160.51425_f64; // exact price 0.158921... > displayed 0.15
+    let fill = SourceFill::from_raw(&raw, "{}").expect("floor-displayed row must be accepted");
+    assert_eq!(fill.price, dec!(0.15));
+    assert!(fill.exec_price > fill.price);
+    assert!(fill.exec_price < fill.price + dec!(0.01));
+    // Cost basis carries the exact price, not the rounded display.
+    assert_eq!(fill.usdc_size, dec!(160.51425));
+}
+
+#[test]
+fn fee_premium_rows_are_rejected() {
+    // The 82-row suspect family: usdc ≈ price*size × 1.0504..1.0567 on
+    // dip-ladder markets. Outside every verified interpretation → rejected
+    // while preserved raw upstream (fee-schedule verification is the blocker).
+    let mut raw = sample_raw();
+    raw.price = 0.28_f64;
+    raw.size = 4144.31_f64;
+    raw.usdc_size = 4144.31_f64 * 0.294_112_f64; // +5.0% premium
+    let err = SourceFill::from_raw(&raw, "{}").expect_err("fee-premium row must be rejected");
+    assert!(matches!(err, crate::error::IngestionError::Validation(_)));
+}
+
+#[test]
 fn event_identity_is_stable_and_order_sensitive() {
     let a = event_identity(
         "0xtx",

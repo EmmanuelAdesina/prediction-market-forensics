@@ -42,6 +42,9 @@ pub trait MarketRepository {
     /// Record a classification decision + evidence.
     fn record_classification(&self, condition_id: &str, ev: &ClassifierEvidence) -> Result<()>;
 
+    /// Clear stored classifications (for re-evaluation after enrichment).
+    fn clear_classifications(&self) -> Result<()>;
+
     /// Condition ids that exist in fills but have CLOB metadata (populated by
     /// activity normalization) yet lack a classification.
     fn condition_ids_missing_classification(&self) -> Result<Vec<String>>;
@@ -206,6 +209,16 @@ impl MarketRepository for Database {
             ],
         )?;
         tx.commit()?;
+        Ok(())
+    }
+
+    fn clear_classifications(&self) -> Result<()> {
+        let conn = self.inner_w();
+        conn.execute(
+            "UPDATE markets SET class_verdict = NULL, class_evidence_json = NULL,
+                    class_version = NULL, classified_at = NULL",
+            [],
+        )?;
         Ok(())
     }
 

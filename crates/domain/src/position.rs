@@ -104,7 +104,7 @@ impl PositionState {
                     opened_ts: fill.timestamp,
                     shares_total: fill.size,
                     shares_remaining: fill.size,
-                    cost_per_share: fill.price,
+                    cost_per_share: fill.exec_price,
                 });
             }
             Side::Sell => {
@@ -129,7 +129,7 @@ impl PositionState {
                 let consumed = fill.size - to_consume;
                 if consumed > Decimal::ZERO {
                     self.disposed_shares += consumed;
-                    let proceeds = fill.price * consumed;
+                    let proceeds = fill.exec_price * consumed;
                     self.realized_pnl += proceeds - cost;
                 }
                 if to_consume > Decimal::ZERO {

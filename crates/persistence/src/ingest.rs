@@ -302,6 +302,9 @@ impl IngestRepository for Database {
                 size,
                 usdc_size,
                 price,
+                // Exact per-share price is a pure derivation of the two
+                // persisted source Decimals — recomputed, not stored.
+                exec_price: usdc_size / size,
                 outcome_index,
                 outcome,
                 market_title,

@@ -131,8 +131,13 @@ pub async fn ingest_markets(cfg: &AppConfig, limit: Option<u64>) -> CmdResult<St
 
 // ---------------------------------------------------------------- classify
 
-pub fn classify_markets(cfg: &AppConfig) -> CmdResult<String> {
+pub fn classify_markets(cfg: &AppConfig, reset: bool) -> CmdResult<String> {
     let database = db(cfg)?;
+    if reset {
+        MarketRepository::clear_classifications(&database)
+            .map_err(|e| format!("reset classifications: {e}"))?;
+        tracing::info!("classifications cleared for re-evaluation");
+    }
     let pending = MarketRepository::condition_ids_missing_classification(&database)
         .map_err(|e| format!("query markets: {e}"))?;
     let mut counts = [0usize; 3]; // crypto, non_crypto, unknown
