@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 /// Structured errors for the ingestion pipeline.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum IngestionError {
     /// The upstream returned a transient response we may retry.
     #[error("transient upstream error {code}: {message}")]

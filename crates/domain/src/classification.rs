@@ -25,19 +25,29 @@ impl CryptoVerdict {
 /// One piece of supporting evidence for the verdict, carrying where it came from.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum EvidenceSignal {
-    /// Naive keyword N-gram slug/term match.
+    /// Naive keyword match on slug/title.
     SlugTerm { term: String },
-    /// Label political/commodity/other language.
+    /// Hard exclusion term (commodity/eq/other).
     SlugHardTerm { term: String },
     /// Crypto icon marker (e.g. "BTC", "ETH" in the icon filename).
     IconToken { token: String },
     /// Gamma tag on the event or market.
     Tags { tag: String },
-    /// Description contained a crypto reference; a `counter` score indicates
-    /// how strong a positive signal it was.
+    /// Description contained an asset term.
     DescriptionTerm { term: String },
-    /// Event ancestor ("series") slug.
-    EventSlugTerm { term: String },
+}
+
+impl EvidenceSignal {
+    /// Stable discriminator key for dedup/ordering.
+    pub fn sort_key(&self) -> String {
+        match self {
+            EvidenceSignal::SlugTerm { term } => format!("slug:{term}"),
+            EvidenceSignal::SlugHardTerm { term } => format!("hard:{term}"),
+            EvidenceSignal::IconToken { token } => format!("icon:{token}"),
+            EvidenceSignal::Tags { tag } => format!("tag:{tag}"),
+            EvidenceSignal::DescriptionTerm { term } => format!("desc:{term}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

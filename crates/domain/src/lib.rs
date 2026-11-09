@@ -15,8 +15,8 @@ pub mod market;
 pub mod position;
 
 pub use activity::{
-    ActivityFilters, ActivityType, IngestionBatch, Outcome, OutcomeToken, Side, SourceFill,
-    SourceFillRaw, PageMeta, WalletCursor, event_identity,
+    event_identity, ActivityFilters, ActivityType, IngestionBatch, Outcome, OutcomeToken, PageMeta,
+    Side, SourceFill, SourceFillRaw, WalletCursor,
 };
 pub use classification::{ClassifierEvidence, CryptoVerdict};
 pub use error::IngestionError;

@@ -26,8 +26,8 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use serde_json::Value as Json;
+use sha2::{Digest, Sha256};
 
 use crate::error::IngestionError;
 
@@ -90,9 +90,7 @@ pub struct SourceFillRaw {
 
 /// Wallet address validation (0x + 40 hex chars, case-insensitive).
 pub fn is_valid_address(a: &str) -> bool {
-    a.len() == 42
-        && a.starts_with("0x")
-        && a.chars().skip(2).all(|c| c.is_ascii_hexdigit())
+    a.len() == 42 && a.starts_with("0x") && a.chars().skip(2).all(|c| c.is_ascii_hexdigit())
 }
 
 fn dec_from_json_f64(name: &str, v: f64) -> Result<Decimal, IngestionError> {
@@ -109,8 +107,7 @@ fn dec_from_json_f64(name: &str, v: f64) -> Result<Decimal, IngestionError> {
 }
 
 fn s_decimal(s: &str) -> Result<Decimal, String> {
-    s.parse::<Decimal>()
-        .map_err(|e| format!("{s:?}: {e}"))
+    s.parse::<Decimal>().map_err(|e| format!("{s:?}: {e}"))
 }
 
 /// A validated, normalized source fill.
@@ -168,11 +165,16 @@ impl SourceFill {
             )));
         }
         if raw.size <= 0.0 {
-            return Err(IngestionError::Validation(format!("size must be > 0, got {}", raw.size)));
+            return Err(IngestionError::Validation(format!(
+                "size must be > 0, got {}",
+                raw.size
+            )));
         }
         let price = dec_from_json_f64("price", raw.price)?;
         if !(Decimal::ZERO..=Decimal::ONE).contains(&price) {
-            return Err(IngestionError::Validation(format!("price out of [0,1]: {price}")));
+            return Err(IngestionError::Validation(format!(
+                "price out of [0,1]: {price}"
+            )));
         }
         let size = dec_from_json_f64("size", raw.size)?;
         let usdc = dec_from_json_f64("usdc_size", raw.usdc_size)?;
@@ -300,16 +302,25 @@ pub struct ActivityFilters {
 impl ActivityFilters {
     /// Canonical fingerprint of the query parameters (order-stable).
     pub fn fingerprint(&self) -> String {
-        let mut types: Vec<&str> = self.record_types.iter().map(|t| match t {
-            ActivityType::Trade => "TRADE",
-            ActivityType::Split => "SPLIT",
-            ActivityType::Merge => "MERGE",
-            ActivityType::Redeem => "REDEEM",
-            ActivityType::Reward => "REWARD",
-            ActivityType::Conversion => "CONVERSION",
-        }).collect();
+        let mut types: Vec<&str> = self
+            .record_types
+            .iter()
+            .map(|t| match t {
+                ActivityType::Trade => "TRADE",
+                ActivityType::Split => "SPLIT",
+                ActivityType::Merge => "MERGE",
+                ActivityType::Redeem => "REDEEM",
+                ActivityType::Reward => "REWARD",
+                ActivityType::Conversion => "CONVERSION",
+            })
+            .collect();
         types.sort();
-        format!("user={}|types={}|limit={}", self.user.to_ascii_lowercase(), types.join(","), self.limit)
+        format!(
+            "user={}|types={}|limit={}",
+            self.user.to_ascii_lowercase(),
+            types.join(","),
+            self.limit
+        )
     }
 }
 
@@ -350,9 +361,9 @@ impl IngestionBatch {
             .get("data")
             .and_then(|d| d.as_array())
             .ok_or_else(|| IngestionError::InconsistentFeed("missing .data array".into()))?;
-        let pagination = body.get("pagination").ok_or_else(|| {
-            IngestionError::InconsistentFeed("missing .pagination object".into())
-        })?;
+        let pagination = body
+            .get("pagination")
+            .ok_or_else(|| IngestionError::InconsistentFeed("missing .pagination object".into()))?;
 
         let mut fills = Vec::with_capacity(data.len());
         let mut invalid = 0usize;

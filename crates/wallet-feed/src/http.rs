@@ -3,9 +3,11 @@
 use std::time::Duration;
 
 use tokor_domain::activity::IngestionBatch;
-use tokor_domain::error::{IngestionError, parse_retry_after};
+use tokor_domain::error::{parse_retry_after, IngestionError};
 
-use crate::provider::{DataApiActivityRequest, FetchedPage, WalletFeedError, WalletFeedProvider, build_activity_url};
+use crate::provider::{
+    build_activity_url, DataApiActivityRequest, FetchedPage, WalletFeedError, WalletFeedProvider,
+};
 
 pub struct HttpWalletFeed {
     client: reqwest::Client,
@@ -43,15 +45,12 @@ impl WalletFeedProvider for HttpWalletFeed {
             .map(|(_, q)| q.to_string())
             .unwrap_or_default();
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await
-            .map_err(|e| WalletFeedError::Upstream(IngestionError::Transient {
+        let response = self.client.get(&url).send().await.map_err(|e| {
+            WalletFeedError::Upstream(IngestionError::Transient {
                 code: 0,
                 message: format!("transport: {e}"),
-            }))?;
+            })
+        })?;
 
         let status = response.status().as_u16();
         if (200..300).contains(&status) {

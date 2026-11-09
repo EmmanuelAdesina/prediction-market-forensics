@@ -1,0 +1,24 @@
+# Tokor engine operator configuration (Phase 1).
+# Read-only public data only: no credentials belong in this file.
+
+[wallet]
+address = "0xa19cbababc312f9df185e49d7004c249ed1ade6b"
+
+# Data API v2 (wallet activity + positions).
+[data_api]
+base_url_v2 = "https://data-api.polymarket.com/v2"
+page_limit = 500
+page_pause_ms = 1200
+positions_page_limit = 500
+max_retries = 5
+
+# CLOB REST (market metadata authority).
+[clob]
+base_url = "https://clob.polymarket.com"
+
+# Gamma API (event tags / descriptions enrichment).
+[gamma]
+base_url = "https://gamma-api.polymarket.com"
+
+[storage]
+db_path = "data/tokor.db"

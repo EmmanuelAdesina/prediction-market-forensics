@@ -1,7 +1,6 @@
 //! Market metadata + classification persistence.
 
 use chrono::Utc;
-use rusqlite::Connection;
 use tokor_domain::classification::{ClassifierEvidence, CryptoVerdict};
 use tokor_domain::market::MarketRef;
 
@@ -12,7 +11,9 @@ pub trait MarketRepository {
     /// enrichment columns.
     fn upsert_market_ref(&self, m: &MarketRef) -> Result<()>;
 
-    /// Upsert the full CLOB metadata payload + classification record atomically.
+    /// Upsert the full CLOB metadata payload, optionally the Gamma payload,
+    /// atomically. Normalized columns are COALESCE'd so re-runs never erase.
+    #[allow(clippy::too_many_arguments)]
     fn upsert_market_enriched(
         &self,
         condition_id: &str,
@@ -28,7 +29,15 @@ pub trait MarketRepository {
         minimum_order_size: Option<&str>,
         neg_risk: Option<bool>,
         clob_meta_json: &str,
+        gamma_meta_json: Option<&str>,
     ) -> Result<()>;
+
+    /// Attach an outcome token to a market.
+    fn upsert_token(&self, condition_id: &str, token_id: &str, outcome: Option<&str>)
+        -> Result<()>;
+
+    /// Condition ids with no CLOB enrichment yet (optionally bounded).
+    fn condition_ids_needing_enrichment(&self, limit: Option<u64>) -> Result<Vec<String>>;
 
     /// Record a classification decision + evidence.
     fn record_classification(&self, condition_id: &str, ev: &ClassifierEvidence) -> Result<()>;
@@ -57,13 +66,7 @@ impl MarketRepository for Database {
                 market_slug = COALESCE(markets.market_slug, excluded.market_slug),
                 event_slug = COALESCE(markets.event_slug, excluded.event_slug),
                 icon = COALESCE(markets.icon, excluded.icon)",
-            rusqlite::params![
-                m.condition_id,
-                m.title,
-                m.market_slug,
-                m.event_slug,
-                m.icon,
-            ],
+            rusqlite::params![m.condition_id, m.title, m.market_slug, m.event_slug, m.icon,],
         )?;
         if let Some(tokens) = &m.tokens {
             for (token_id, outcome) in tokens {
@@ -93,6 +96,7 @@ impl MarketRepository for Database {
         minimum_order_size: Option<&str>,
         neg_risk: Option<bool>,
         clob_meta_json: &str,
+        gamma_meta_json: Option<&str>,
     ) -> Result<()> {
         let mut conn = self.inner_w();
         let tx = conn.transaction()?;
@@ -115,7 +119,8 @@ impl MarketRepository for Database {
                 minimum_order_size = COALESCE(?11, minimum_order_size),
                 neg_risk = COALESCE(?12, neg_risk),
                 clob_meta_json = ?13,
-                enriched_at = ?14
+                gamma_meta_json = COALESCE(?14, gamma_meta_json),
+                enriched_at = ?15
              WHERE condition_id = ?1",
             rusqlite::params![
                 condition_id,
@@ -131,11 +136,51 @@ impl MarketRepository for Database {
                 minimum_order_size,
                 neg_risk.map(|b| b as i64),
                 clob_meta_json,
+                gamma_meta_json,
                 Utc::now().to_rfc3339(),
             ],
         )?;
         tx.commit()?;
         Ok(())
+    }
+
+    fn upsert_token(
+        &self,
+        condition_id: &str,
+        token_id: &str,
+        outcome: Option<&str>,
+    ) -> Result<()> {
+        let conn = self.inner_w();
+        conn.execute(
+            "INSERT INTO market_tokens (token_id, condition_id, outcome)
+             VALUES (?1, ?2, ?3)
+             ON CONFLICT(token_id) DO UPDATE SET
+               condition_id = excluded.condition_id,
+               outcome = COALESCE(excluded.outcome, market_tokens.outcome)",
+            rusqlite::params![token_id, condition_id, outcome],
+        )?;
+        Ok(())
+    }
+
+    fn condition_ids_needing_enrichment(&self, limit: Option<u64>) -> Result<Vec<String>> {
+        let conn = self.inner_w();
+        let sql = match limit {
+            Some(l) => format!(
+                "SELECT condition_id FROM markets
+                 WHERE clob_meta_json IS NULL ORDER BY condition_id LIMIT {l}"
+            ),
+            None => String::from(
+                "SELECT condition_id FROM markets
+                 WHERE clob_meta_json IS NULL ORDER BY condition_id",
+            ),
+        };
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |r| r.get(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
     }
 
     fn record_classification(&self, condition_id: &str, ev: &ClassifierEvidence) -> Result<()> {
@@ -152,7 +197,13 @@ impl MarketRepository for Database {
             "UPDATE markets SET class_verdict = ?2, class_evidence_json = ?3,
                     class_version = ?4, classified_at = ?5
              WHERE condition_id = ?1",
-            rusqlite::params![condition_id, verdict, evidence, ev.classifier_version, Utc::now().to_rfc3339()],
+            rusqlite::params![
+                condition_id,
+                verdict,
+                evidence,
+                ev.classifier_version,
+                Utc::now().to_rfc3339()
+            ],
         )?;
         tx.commit()?;
         Ok(())

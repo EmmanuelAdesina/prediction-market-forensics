@@ -12,7 +12,9 @@
 use tokor_domain::activity::{ActivityFilters, WalletCursor};
 use tokor_persistence::ingest::IngestRepository;
 
-use crate::provider::{DataApiActivityRequest, WalletFeedError, WalletFeedProvider, build_activity_url};
+use crate::provider::{
+    build_activity_url, DataApiActivityRequest, WalletFeedError, WalletFeedProvider,
+};
 
 pub struct FullHistoryIngestor<'a, P: WalletFeedProvider> {
     pub provider: &'a P,
@@ -55,15 +57,15 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
         run_id: &str,
     ) -> Result<IngestProgress, IngestRunError> {
         let fingerprint = filters.fingerprint();
-        let filters_json = serde_json::to_string(filters)
-            .map_err(|e| IngestRunError::Storage(tokor_persistence::PersistError::Misuse(format!("filters: {e}"))))?;
+        let filters_json = serde_json::to_string(filters).map_err(|e| {
+            IngestRunError::Storage(tokor_persistence::PersistError::Misuse(format!(
+                "filters: {e}"
+            )))
+        })?;
         self.db.start_run(run_id, &filters_json, &fingerprint)?;
 
         let durable: Option<WalletCursor> = {
-            let (cursor, pages) = self
-                .db
-                .load_cursor(&fingerprint)?
-                .unwrap_or((None, 0));
+            let (cursor, pages) = self.db.load_cursor(&fingerprint)?.unwrap_or((None, 0));
             Some(WalletCursor {
                 last_cursor: cursor,
                 filters_fingerprint: fingerprint.clone(),
@@ -108,10 +110,7 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
             let batch = &page.batch;
 
             // A page with no data, no more, and no cursor ends the walk.
-            if batch.fills.is_empty()
-                && !batch.has_more
-                && batch.next_cursor.is_none()
-            {
+            if batch.fills.is_empty() && !batch.has_more && batch.next_cursor.is_none() {
                 progress.terminal_reason = "backend_empty_no_more";
                 break;
             }
@@ -153,7 +152,11 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
 
         self.db.finish_run(
             run_id,
-            if progress.complete { "COMPLETE" } else { "ABORTED" },
+            if progress.complete {
+                "COMPLETE"
+            } else {
+                "ABORTED"
+            },
             progress.last_cursor.as_deref(),
         )?;
         Ok(progress)

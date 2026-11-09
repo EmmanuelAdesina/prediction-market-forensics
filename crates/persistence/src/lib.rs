@@ -14,8 +14,10 @@
 pub mod ingest;
 pub mod markets;
 pub mod recon;
+pub mod report;
 
 pub use ingest::{IngestRepository, PageCheckpoint};
+pub use report::{PositionCounts, ReportRepository, RunSummary};
 
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
@@ -73,7 +75,9 @@ impl Database {
         conn.pragma_update(None, "synchronous", "FULL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.busy_timeout(std::time::Duration::from_millis(5000))?;
-        let db = Self { conn: Mutex::new(conn) };
+        let db = Self {
+            conn: Mutex::new(conn),
+        };
         db.run_migrations()?;
         Ok(db)
     }
@@ -93,15 +97,18 @@ impl Database {
         let mut conn = self.conn();
         for (name, sql) in MIGRATIONS {
             let already = conn
-                .query_row("SELECT 1 FROM schema_migrations WHERE version = ?1", [name], |_| Ok(()))
+                .query_row(
+                    "SELECT 1 FROM schema_migrations WHERE version = ?1",
+                    [name],
+                    |_| Ok(()),
+                )
                 .is_ok();
             if already {
                 continue;
             }
             let tx = conn.transaction()?;
-            tx.execute_batch(sql).map_err(|e| {
-                PersistError::Migration(format!("{name}: {e}"))
-            })?;
+            tx.execute_batch(sql)
+                .map_err(|e| PersistError::Migration(format!("{name}: {e}")))?;
             tx.execute(
                 "INSERT INTO schema_migrations (version, applied_at) VALUES (?1, ?2)",
                 rusqlite::params![name, Utc::now().to_rfc3339()],
@@ -135,6 +142,13 @@ impl Database {
         let n: i64 = conn.query_row("SELECT COUNT(*) FROM source_fills", [], |r| r.get(0))?;
         Ok(n as u64)
     }
+
+    /// Count of persisted raw forensic pages.
+    pub fn ingest_raw_page_count(&self) -> Result<u64> {
+        let conn = self.conn();
+        let n: i64 = conn.query_row("SELECT COUNT(*) FROM raw_api_pages", [], |r| r.get(0))?;
+        Ok(n as u64)
+    }
 }
 
 #[cfg(test)]
@@ -163,7 +177,10 @@ mod tests {
             .unwrap()
             .collect::<std::result::Result<Vec<String>, _>>()
             .unwrap();
-        assert_eq!(versions, vec!["0001_wallet_activity", "0002_markets_positions"]);
+        assert_eq!(
+            versions,
+            vec!["0001_wallet_activity", "0002_markets_positions"]
+        );
     }
 
     #[test]
@@ -173,7 +190,10 @@ mod tests {
         db.run_migrations().unwrap();
         for (name, sql) in MIGRATIONS {
             let scratch = Connection::open_in_memory().unwrap();
-            assert!(scratch.execute_batch(sql).is_ok(), "migration {name} not applicable");
+            assert!(
+                scratch.execute_batch(sql).is_ok(),
+                "migration {name} not applicable"
+            );
         }
     }
 

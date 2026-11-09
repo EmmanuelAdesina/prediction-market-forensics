@@ -12,9 +12,7 @@
 use std::time::Duration;
 
 use tokor_domain::activity::{ActivityFilters, IngestionBatch};
-use tokor_domain::error::{IngestionError, parse_retry_after};
-
-use rand::Rng;
+use tokor_domain::error::IngestionError;
 
 #[derive(Debug, Clone)]
 pub struct DataApiActivityRequest {
@@ -59,6 +57,15 @@ pub struct RetryingProvider<P: WalletFeedProvider> {
     pub max_delay_ms: u64,
 }
 
+impl<P: WalletFeedProvider> WalletFeedProvider for RetryingProvider<P> {
+    async fn fetch_activity_page(
+        &self,
+        request: &DataApiActivityRequest,
+    ) -> Result<FetchedPage, WalletFeedError> {
+        self.fetch_with_retry(request).await
+    }
+}
+
 impl<P: WalletFeedProvider> RetryingProvider<P> {
     pub fn new(inner: P) -> Self {
         Self {
@@ -82,7 +89,7 @@ impl<P: WalletFeedProvider> RetryingProvider<P> {
         jitter.min(self.max_delay_ms)
     }
 
-    pub async fn fetch_activity_page(
+    pub async fn fetch_with_retry(
         &self,
         request: &DataApiActivityRequest,
     ) -> Result<FetchedPage, WalletFeedError> {
@@ -90,7 +97,10 @@ impl<P: WalletFeedProvider> RetryingProvider<P> {
         loop {
             match self.inner.fetch_activity_page(request).await {
                 Ok(page) => return Ok(page),
-                Err(WalletFeedError::Upstream(IngestionError::RateLimited { retry_after_hint, .. })) => {
+                Err(WalletFeedError::Upstream(IngestionError::RateLimited {
+                    retry_after_hint,
+                    ..
+                })) => {
                     attempt += 1;
                     if attempt > self.max_retries {
                         return Err(WalletFeedError::Upstream(IngestionError::RateLimited {
@@ -113,7 +123,12 @@ impl<P: WalletFeedProvider> RetryingProvider<P> {
                         }));
                     }
                     let delay = self.delay_for(attempt);
-                    tracing::warn!(attempt, code, delay_ms = delay, "transient failure; retrying");
+                    tracing::warn!(
+                        attempt,
+                        code,
+                        delay_ms = delay,
+                        "transient failure; retrying"
+                    );
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                 }
                 Err(e) => return Err(e),
@@ -133,7 +148,11 @@ pub fn build_activity_url(
         base_url.trim_end_matches('/'),
         filters.user.to_ascii_lowercase()
     );
-    let types: Vec<&str> = filters.record_types.iter().map(|t| activity_type_str(*t)).collect();
+    let types: Vec<&str> = filters
+        .record_types
+        .iter()
+        .map(|t| activity_type_str(*t))
+        .collect();
     if !types.is_empty() {
         url.push_str("&type=");
         url.push_str(&types.join("&type="));

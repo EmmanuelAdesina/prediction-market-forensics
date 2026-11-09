@@ -99,14 +99,19 @@ impl ReconRepository for Database {
                 pos.remaining_cost_basis().to_string(),
                 pos.realized_pnl().to_string(),
                 pos.fills_applied as i64,
-                if pos.history_probably_incomplete { 1 } else { 0 },
+                if pos.history_probably_incomplete {
+                    1
+                } else {
+                    0
+                },
                 Utc::now().to_rfc3339(),
             ],
         )?;
         // Lot audit trail: replace the remaining lot set.
-        tx.execute("DELETE FROM position_lots_remaining WHERE token_id = ?1", [
-            token_id
-        ])?;
+        tx.execute(
+            "DELETE FROM position_lots_remaining WHERE token_id = ?1",
+            [token_id],
+        )?;
         for lot in &pos.lots {
             tx.execute(
                 "INSERT OR REPLACE INTO position_lots_remaining
@@ -127,11 +132,12 @@ impl ReconRepository for Database {
 
     fn load_reconstructed_position(&self, token_id: &str) -> Result<Option<PositionSnapshot>> {
         let conn = self.inner_w();
-        let mut stmt = conn
-            .prepare("SELECT token_id, condition_id, remaining_inventory, avg_open_price,
+        let mut stmt = conn.prepare(
+            "SELECT token_id, condition_id, remaining_inventory, avg_open_price,
                              realized_pnl, disposed_shares, unattributed_disposals,
                              history_probably_incomplete, fills_applied
-                      FROM positions_reconstructed WHERE token_id = ?1")?;
+                      FROM positions_reconstructed WHERE token_id = ?1",
+        )?;
         let mut rows = stmt.query([token_id])?;
         if let Some(row) = rows.next()? {
             return Ok(Some(PositionSnapshot {

@@ -30,12 +30,7 @@ use crate::Database;
 
 pub trait IngestRepository {
     /// Begin an acquisition run. Overwrites nothing: run metadata only.
-    fn start_run(
-        &self,
-        run_id: &str,
-        filters_json: &str,
-        filters_fingerprint: &str,
-    ) -> Result<()>;
+    fn start_run(&self, run_id: &str, filters_json: &str, filters_fingerprint: &str) -> Result<()>;
 
     /// Mark run finished. `status` is `COMPLETE` or `ABORTED`.
     fn finish_run(&self, run_id: &str, status: &str, last_cursor: Option<&str>) -> Result<()>;
@@ -110,17 +105,15 @@ fn tx_hash_of(f: &SourceFill) -> String {
     // for indexing purposes (never re-parse the whole row at query time).
     serde_json::from_str::<serde_json::Value>(&f.raw_json)
         .ok()
-        .and_then(|v| v.get("transaction_hash").and_then(|h| h.as_str().map(|s| s.to_string())))
+        .and_then(|v| {
+            v.get("transaction_hash")
+                .and_then(|h| h.as_str().map(|s| s.to_string()))
+        })
         .unwrap_or_else(|| String::from(""))
 }
 
 impl IngestRepository for Database {
-    fn start_run(
-        &self,
-        run_id: &str,
-        filters_json: &str,
-        filters_fingerprint: &str,
-    ) -> Result<()> {
+    fn start_run(&self, run_id: &str, filters_json: &str, filters_fingerprint: &str) -> Result<()> {
         let mut conn = self.inner_w();
         let tx = conn.transaction()?;
         tx.execute(
@@ -128,7 +121,12 @@ impl IngestRepository for Database {
              (run_id, started_at, finished_at, status, filters_json, filters_fingerprint,
               pages_committed, fills_committed, last_cursor)
              VALUES (?1, ?2, NULL, 'RUNNING', ?3, ?4, 0, 0, NULL)",
-            rusqlite::params![run_id, Utc::now().to_rfc3339(), filters_json, filters_fingerprint],
+            rusqlite::params![
+                run_id,
+                Utc::now().to_rfc3339(),
+                filters_json,
+                filters_fingerprint
+            ],
         )?;
         tx.commit()?;
         Ok(())
@@ -136,7 +134,9 @@ impl IngestRepository for Database {
 
     fn finish_run(&self, run_id: &str, status: &str, last_cursor: Option<&str>) -> Result<()> {
         if !matches!(status, "COMPLETE" | "ABORTED") {
-            return Err(crate::PersistError::Misuse(format!("invalid run status {status}")));
+            return Err(crate::PersistError::Misuse(format!(
+                "invalid run status {status}"
+            )));
         }
         let mut conn = self.inner_w();
         let tx = conn.transaction()?;
@@ -343,10 +343,6 @@ fn side_for(s: &str) -> Result<tokor_domain::activity::Side> {
     }
 }
 
-fn from_dec(field: &'static str) -> impl FnOnce(rust_decimal::Error) -> PersistError {
-    move |e| PersistError::Misuse(format!("stored {field}: {e}"))
-}
-
 /// Bridge PersistError into rusqlite's error type for query_map closures.
 fn from_store(e: PersistError) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(e))
@@ -388,7 +384,7 @@ mod tests {
         let raw: SourceFillRaw = serde_json::from_value(raw).unwrap();
         SourceFill::from_raw(&raw, &raw_json).unwrap()
     }
-    use tokor_domain::activity::{SourceFillRaw, Side};
+    use tokor_domain::activity::{Side, SourceFillRaw};
 
     #[test]
     fn commit_page_atomic_cursor_and_fills() {
@@ -397,8 +393,18 @@ mod tests {
         let f1 = demo_fill(Side::Buy, 100, 10.0);
         let f2 = demo_fill(Side::Buy, 110, 20.0);
         let ck = db
-            .commit_page("r1", 0, "now", 200, "http://u?x", "x=1", "{\"data\":[]}",
-                Some("cur1"), true, &[f1.clone(), f2.clone()])
+            .commit_page(
+                "r1",
+                0,
+                "now",
+                200,
+                "http://u?x",
+                "x=1",
+                "{\"data\":[]}",
+                Some("cur1"),
+                true,
+                &[f1.clone(), f2.clone()],
+            )
             .unwrap();
         assert_eq!(ck.fills_inserted, 2);
         assert_eq!(ck.fills_already_seen, 0);
@@ -415,8 +421,34 @@ mod tests {
         let db = Database::open_memory().unwrap();
         db.start_run("r2", "{}", "fp2").unwrap();
         let f1 = demo_fill(Side::Sell, 200, 7.0);
-        let _ = db.commit_page("r2", 0, "now", 200, "u", "q", "{}", Some("c"), false, &[f1.clone()]).unwrap();
-        let ck = db.commit_page("r2", 1, "now", 200, "u", "q", "{}", Some("c2"), false, &[f1.clone()]).unwrap();
+        let _ = db
+            .commit_page(
+                "r2",
+                0,
+                "now",
+                200,
+                "u",
+                "q",
+                "{}",
+                Some("c"),
+                false,
+                &[f1.clone()],
+            )
+            .unwrap();
+        let ck = db
+            .commit_page(
+                "r2",
+                1,
+                "now",
+                200,
+                "u",
+                "q",
+                "{}",
+                Some("c2"),
+                false,
+                &[f1.clone()],
+            )
+            .unwrap();
         assert_eq!(ck.fills_inserted, 0);
         assert_eq!(ck.fills_already_seen, 1);
         assert_eq!(db.fills_count().unwrap(), 1);
@@ -434,7 +466,20 @@ mod tests {
             db.start_run("r3", "{}", "fp3").unwrap();
             let mut f = demo_fill(Side::Buy, 300, 2.0);
             f.raw_json = f.raw_json.replace("\"timestamp\":300", "\"timestamp\":301");
-            let _ = db.commit_page("r3", 0, "now", 200, "u", "q", "{}", Some("cursorX"), true, &[f.clone()]).unwrap();
+            let _ = db
+                .commit_page(
+                    "r3",
+                    0,
+                    "now",
+                    200,
+                    "u",
+                    "q",
+                    "{}",
+                    Some("cursorX"),
+                    true,
+                    &[f.clone()],
+                )
+                .unwrap();
             db.finish_run("r3", "COMPLETE", Some("cursorX")).unwrap();
         }
         let db2 = Database::open(&path).unwrap();

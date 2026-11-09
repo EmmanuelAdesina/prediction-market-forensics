@@ -3,15 +3,14 @@ use rust_decimal_macros::dec;
 use serde_json::json;
 
 use crate::activity::{
-    ActivityFilters, ActivityType, IngestionBatch, Side, SourceFill, SourceFillRaw, event_identity,
-    is_valid_address,
+    event_identity, is_valid_address, ActivityFilters, ActivityType, IngestionBatch, Side,
+    SourceFill, SourceFillRaw,
 };
 use crate::error::parse_retry_after;
 use crate::market::MarketRef;
 use crate::position::PositionBook;
 
-const TEST_COND: &str =
-    "0x92d87c1b3bebe88f45c31bb914d87be3d6f2a47d7cdf10d7210ac0eb92f26389";
+const TEST_COND: &str = "0x92d87c1b3bebe88f45c31bb914d87be3d6f2a47d7cdf10d7210ac0eb92f26389";
 
 fn sample_raw() -> SourceFillRaw {
     serde_json::from_value(json!({
@@ -74,11 +73,51 @@ fn price_preserved_exactly_via_string_path() {
 
 #[test]
 fn event_identity_is_stable_and_order_sensitive() {
-    let a = event_identity("0xtx", 1, "0xcond", "0xtoken", &Side::Buy, &dec!(0.5), &dec!(10));
-    let b = event_identity("0xtx", 1, "0xcond", "0xtoken", &Side::Buy, &dec!(0.5), &dec!(10));
-    let c = event_identity("0xtx", 1, "0xcond", "0xtoken", &Side::Buy, &dec!(0.51), &dec!(10));
-    let d = event_identity("0xtx", 1, "0xcond", "0xtoken", &Side::Sell, &dec!(0.5), &dec!(10));
-    let e = event_identity("0xtx", 2, "0xcond", "0xtoken", &Side::Buy, &dec!(0.5), &dec!(10));
+    let a = event_identity(
+        "0xtx",
+        1,
+        "0xcond",
+        "0xtoken",
+        &Side::Buy,
+        &dec!(0.5),
+        &dec!(10),
+    );
+    let b = event_identity(
+        "0xtx",
+        1,
+        "0xcond",
+        "0xtoken",
+        &Side::Buy,
+        &dec!(0.5),
+        &dec!(10),
+    );
+    let c = event_identity(
+        "0xtx",
+        1,
+        "0xcond",
+        "0xtoken",
+        &Side::Buy,
+        &dec!(0.51),
+        &dec!(10),
+    );
+    let d = event_identity(
+        "0xtx",
+        1,
+        "0xcond",
+        "0xtoken",
+        &Side::Sell,
+        &dec!(0.5),
+        &dec!(10),
+    );
+    let e = event_identity(
+        "0xtx",
+        2,
+        "0xcond",
+        "0xtoken",
+        &Side::Buy,
+        &dec!(0.5),
+        &dec!(10),
+    );
     assert_eq!(a, b);
     assert_ne!(a, c);
     assert_ne!(a, d);
@@ -123,7 +162,8 @@ fn page_parse_empty_data_ok_missing_data_rejected() {
     let f = filters(100);
     let empty = json!({ "data": [], "pagination": {"limit": 100, "offset": 0, "has_more": false, "next_cursor": ""}});
     assert!(IngestionBatch::parse(&empty, &f).is_ok());
-    let missing = json!({ "pagination": {"limit": 100, "offset": 0, "has_more": false, "next_cursor": ""}});
+    let missing =
+        json!({ "pagination": {"limit": 100, "offset": 0, "has_more": false, "next_cursor": ""}});
     assert!(IngestionBatch::parse(&missing, &f).is_err());
 }
 
@@ -171,7 +211,11 @@ fn sell(ts: i64, price: f64, size: f64) -> SourceFill {
 
 #[test]
 fn inventory_basics_fifo() {
-    let fills = vec![buy(1, 0.10, 100.0), buy(2, 0.12, 100.0), sell(3, 0.20, 150.0)];
+    let fills = vec![
+        buy(1, 0.10, 100.0),
+        buy(2, 0.12, 100.0),
+        sell(3, 0.20, 150.0),
+    ];
     let mut book = PositionBook::new();
     book.apply_all(&fills).unwrap();
     let pos = book.get("0xtoken").unwrap();
@@ -205,7 +249,10 @@ fn sells_cannot_create_negative_inventory() {
     let pos = book.get("0xtoken").unwrap();
     assert_eq!(pos.remaining_inventory(), dec!(0));
     assert_eq!(pos.unattributed_disposals, dec!(60));
-    assert_eq!(pos.realized_pnl(), dec!(0.15) * dec!(40) - dec!(0.10) * dec!(40));
+    assert_eq!(
+        pos.realized_pnl(),
+        dec!(0.15) * dec!(40) - dec!(0.10) * dec!(40)
+    );
 }
 
 #[test]
@@ -214,8 +261,10 @@ fn decimal_exact_arithmetic() {
     let d = dec!(0.09) * dec!(2025);
     assert_eq!(d, dec!(182.25));
     // Float comparison would have noise.
-    assert_ne!(Decimal::from(182_259_u32) / dec!(1000) / dec!(1000)
-        * dec!(1000), d);
+    assert_ne!(
+        Decimal::from(182_259_u32) / dec!(1000) / dec!(1000) * dec!(1000),
+        d
+    );
 }
 
 #[test]
