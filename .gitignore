@@ -1,0 +1,14 @@
+# Credentials and secrets are never committed
+*.env
+.env
+**/*.key
+**/secrets*
+private_key*
+
+# Raw API captures — forensic value but bulky; keep curated fixtures only
+data/raw/
+!data/raw/.gitkeep
+
+# Rust
+target/
+**/target/
