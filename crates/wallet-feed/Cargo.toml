@@ -1,0 +1,21 @@
+[package]
+name = "tokor-wallet-feed"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tokor-domain.workspace = true
+tokor-persistence.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+proptest.workspace = true
