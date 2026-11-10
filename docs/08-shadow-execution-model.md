@@ -156,6 +156,18 @@ Markouts are computed per scenario-weight so docs/09 can decompose:
   (Optimistic / Baseline / Conservative) and the sensitivity of the
   conclusion to that choice.
 
+## 8.1 Implementation map (`crates/shadow-exec`, committed `94371b4`)
+
+| docs/08 section | Module | Notes |
+|---|---|---|
+| §3 queue scenarios | `queue::estimate_queue` | Returns per-scenario queue + `level_consumed` / `optimistic_justified` flags. |
+| §5 decision vocabulary | `decision::{Decision, Submission}` | `submits()` enforces submitted ≠ executed (submitting decision with zero quantity sends nothing). |
+| §6 policies | `copy_sim::{exact_copy, intelligent_copy}` | Budget clamping emits `Resize`; cap-reached emits `ReduceExistingPosition`; missing book emits `DataInsufficient`. |
+| §4 fill credit | `fill_credit::credit_fills` | Evidence state machine: prints at other prices never fill us; queue clears first; level removal cancels; gaps restore the queue (conservative reading). |
+| §6 rule 3 / §1 budget | `portfolio::PortfolioSim` | $49 cap refuses oversized entries (never silently absorbs); fees are USDC-on-top, never in basis; no shorting. |
+| §7 markouts | `markout::markouts` | Tape-mid at +1 s / +5 s / +30 s / +5 m with per-window means. |
+| benchmarks | `benches/shadow_bench.rs` | Criterion: queue estimate, 1k-print credit replay, copy policies, 1k portfolio fills, 10k-print markouts. |
+
 ## 9. Open items
 
 1. Tick-size lattice for price improvement (polymarket CLOB tick = 0.001

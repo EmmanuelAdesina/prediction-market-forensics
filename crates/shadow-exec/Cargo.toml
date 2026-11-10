@@ -12,4 +12,9 @@ rust_decimal.workspace = true
 chrono.workspace = true
 
 [dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 rust_decimal_macros.workspace = true
+
+[[bench]]
+name = "shadow_bench"
+harness = false
