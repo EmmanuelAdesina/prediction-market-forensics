@@ -15,6 +15,7 @@ tokor-persistence.workspace = true
 tokor-wallet-feed.workspace = true
 tokor-market-data.workspace = true
 tokor-market-classifier.workspace = true
+tokor-recorder.workspace = true
 rust_decimal.workspace = true
 rust_decimal_macros.workspace = true
 serde.workspace = true

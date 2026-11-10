@@ -23,6 +23,7 @@ tokor-persistence = { path = "crates/persistence" }
 tokor-wallet-feed = { path = "crates/wallet-feed" }
 tokor-market-data = { path = "crates/market-data" }
 tokor-market-classifier = { path = "crates/market-classifier" }
+tokor-recorder = { path = "crates/recorder" }
 tokor-application = { path = "crates/application" }
 # External
 rust_decimal = { version = "1.36", features = ["serde-str"] }

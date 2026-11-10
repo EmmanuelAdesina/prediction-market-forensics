@@ -2171,6 +2171,7 @@ dependencies = [
  "tokor-market-classifier",
  "tokor-market-data",
  "tokor-persistence",
+ "tokor-recorder",
  "tokor-wallet-feed",
  "toml",
  "tracing",

@@ -48,6 +48,12 @@ enum Command {
         dataset: String,
         out: PathBuf,
     },
+    RecordMarket {
+        tokens: Vec<String>,
+    },
+    ObserveSource {
+        probes: u64,
+    },
     Report,
 }
 
@@ -73,6 +79,12 @@ COMMANDS:
                                          (default: data/derived/event_fee_categories.json).
   derive-parquet <fees|activity|inventory> --out PATH
                                          Emit Phase 1.5 parquet datasets.
+  record-market <TOKEN_ID>...            Record public CLOB market data for the
+                                         given tokens until ctrl-c (Phase 2 §3;
+                                         read-only WS + REST, no keys).
+  observe-source [--probes N]            Independent latency probe of the
+                                         wallet-feed → decision chain (Phase 2
+                                         §4; default 30 probes).
   report                                 Print a data-foundation status report."
         .to_string()
 }
@@ -127,6 +139,17 @@ fn parse_args() -> Result<Cli, String> {
                 .cloned()
                 .ok_or("derive-parquet needs a dataset: fees|activity|inventory")?,
             out: flag_value_path(&flags, "--out").ok_or("derive-parquet needs --out PATH")?,
+        },
+        Some("record-market") => {
+            if positional.len() < 2 {
+                return Err("record-market needs at least one TOKEN_ID\n{}".to_string() + &usage());
+            }
+            Command::RecordMarket {
+                tokens: positional[1..].to_vec(),
+            }
+        }
+        Some("observe-source") => Command::ObserveSource {
+            probes: flag_value_u64(&flags, "--probes").unwrap_or(30),
         },
         Some("report") => Command::Report,
         Some(other) => return Err(format!("unknown command {other:?}\n{}", usage())),
@@ -209,6 +232,8 @@ async fn main() {
         ),
         Command::DeriveParquet { dataset, out } => commands::derive_parquet(&cfg, dataset, out),
         Command::Report => commands::report(&cfg),
+        Command::RecordMarket { tokens } => commands::record_market(&cfg, tokens).await,
+        Command::ObserveSource { probes } => commands::observe_source(&cfg, *probes).await,
     };
 
     match outcome {

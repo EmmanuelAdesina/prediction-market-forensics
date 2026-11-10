@@ -10,15 +10,18 @@ use tokor_domain::market::MarketRef;
 use tokor_market_data::MarketDataClient;
 use tokor_persistence::activity::{FeeRow, PositionSnapshotRow};
 use tokor_persistence::ingest::IngestRepository;
+use tokor_persistence::market_data::{MarketDataRepository, SourceObservationRow, SubscriptionRow};
 use tokor_persistence::markets::MarketRepository;
 use tokor_persistence::recon::{ReconObservation, ReconRepository};
 use tokor_persistence::{Database, PersistError};
+use tokor_recorder::session::{RecorderCommand, RecorderHandle};
+use tokor_recorder::{messages::parse_book_body, RecorderConfig};
 use tokor_wallet_feed::http::HttpWalletFeed;
 use tokor_wallet_feed::ingestor::FullHistoryIngestor;
 use tokor_wallet_feed::positions::{
     walk_positions, walk_positions_status, HttpPositionsFetcher, PaginationRetry, PositionsError,
 };
-use tokor_wallet_feed::provider::RetryingProvider;
+use tokor_wallet_feed::provider::{DataApiActivityRequest, RetryingProvider, WalletFeedProvider};
 
 use crate::config::AppConfig;
 
@@ -1365,4 +1368,170 @@ pub fn report(cfg: &AppConfig) -> CmdResult<String> {
         positions.total,
         positions.open_inventory,
     ))
+}
+
+// ------------------------------------------------- recorder (Phase 2 §3–§4)
+
+/// Wall-clock UTC nanos — the stamp currency for §4 latency chains.
+fn now_ns() -> i64 {
+    chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+}
+
+/// Phase 2 §3: run the public market-data recorder against the given tokens
+/// until ctrl-c. Read-only (WS market channel + REST book snapshots); no
+/// keys, no orders. Subscriptions persist in the DB ledger, so a restarted
+/// session resumes the same set.
+pub async fn record_market(cfg: &AppConfig, tokens: &[String]) -> CmdResult<String> {
+    let database = std::sync::Arc::new(db(cfg)?);
+    for t in tokens {
+        database
+            .add_subscription(&SubscriptionRow {
+                token_id: t.clone(),
+                asset_type: String::new(),
+                slug: String::new(),
+                added_reason: "manual".into(),
+            })
+            .map_err(|e| format!("subscription {t}: {e}"))?;
+    }
+    let config = RecorderConfig {
+        rest_base: cfg.clob_base.clone(),
+        ..RecorderConfig::default()
+    };
+    let handle = RecorderHandle::start(config, database.clone());
+    tracing::info!(tokens = tokens.len(), "recorder running; ctrl-c to stop");
+    tokio::signal::ctrl_c()
+        .await
+        .map_err(|e| format!("signal: {e}"))?;
+    let _ = handle.cmd_tx.send(RecorderCommand::Shutdown).await;
+    // Give the workers a moment to drain their bounded queues.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    let (raw, states, trades, health) = database
+        .market_data_counts()
+        .map_err(|e| format!("counts: {e}"))?;
+    Ok(format!(
+        "recorder session ended: {raw} raw frames, {states} normalized states, \
+         {trades} public trades, {health} health events"
+    ))
+}
+
+/// Phase 2 §4: independent-latency probe of the wallet-feed → decision chain.
+///
+/// Measures OUR pipeline stages with wall-clock nanos — it makes NO claim
+/// about exchange publication latency (wallet timestamps are 1s-resolution;
+/// docs/07 §3). Uses the raw provider WITHOUT the retry wrapper: a retry
+/// would contaminate the latency distribution.
+pub async fn observe_source(cfg: &AppConfig, probes: u64) -> CmdResult<String> {
+    let database = db(cfg)?;
+    let http = HttpWalletFeed::new(&cfg.data_api_base).map_err(|e| format!("http client: {e}"))?;
+    let book_http = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| format!("book client: {e}"))?;
+
+    let filters = ActivityFilters {
+        user: cfg.wallet_address.clone(),
+        record_types: vec![ActivityType::Trade],
+        limit: 100,
+    };
+
+    let mut poll_ms = Vec::new();
+    let mut first_seen_ms = Vec::new();
+    let mut book_ms = Vec::new();
+    let mut decision_ms = Vec::new();
+    let mut recorded = 0u64;
+
+    for probe in 0..probes {
+        let poll_start_ns = now_ns();
+        let request = DataApiActivityRequest {
+            filters: filters.clone(),
+            cursor: None,
+        };
+        let page = match http.fetch_activity_page(&request).await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(probe, error = %e, "probe fetch failed; skipping");
+                continue;
+            }
+        };
+        let http_response_ns = now_ns();
+
+        // First-seen: first normalized fill located in the parsed batch
+        // (provider-internal parse is included in this stage — documented).
+        let Some(fill) = page.batch.fills.first() else {
+            tracing::warn!(probe, "probe page had no TRADE fills; skipping");
+            continue;
+        };
+        let first_seen_ns = now_ns();
+
+        // Book probe: decision-readiness = a parseable fresh book for that
+        // token (the recorder's `is_decision_ready` equivalent, one-shot).
+        let url = format!("{}/book?token_id={}", cfg.clob_base, fill.token_id);
+        let resp = match book_http.get(&url).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(probe, error = %e, "book probe failed; skipping");
+                continue;
+            }
+        };
+        let book_ts_ns = now_ns();
+        let body = resp.text().await.map_err(|e| format!("book body: {e}"))?;
+        let decision_ready_ns = now_ns();
+        // Decision-readiness requires a *parseable* book; an unparseable
+        // body is recorded as not-yet-ready (None) rather than dropped.
+        let book_ok = parse_book_body(&body).is_some();
+
+        poll_ms.push((http_response_ns - poll_start_ns) as f64 / 1e6);
+        first_seen_ms.push((first_seen_ns - http_response_ns) as f64 / 1e6);
+        book_ms.push((book_ts_ns - first_seen_ns) as f64 / 1e6);
+        decision_ms.push((decision_ready_ns - poll_start_ns) as f64 / 1e6);
+
+        database
+            .record_source_observation(&SourceObservationRow {
+                event_key: Some(fill.event_key.clone()),
+                raw_row_index: 0,
+                exchange_ts: Some(fill.timestamp),
+                poll_start_ns,
+                http_response_ns,
+                first_seen_ns,
+                normalized_ns: Some(first_seen_ns),
+                decision_ready_ns: book_ok.then_some(decision_ready_ns),
+                book_ts_ns: Some(book_ts_ns),
+                page_url: url,
+                run_id: format!("observe-{}", now_ns()),
+            })
+            .map_err(|e| format!("observation write: {e}"))?;
+        recorded += 1;
+    }
+
+    let fmt = |label: &str, v: &mut Vec<f64>| -> String {
+        if v.is_empty() {
+            return format!("{label}: n/a");
+        }
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        format!(
+            "{label}: p50={:.1}ms p95={:.1}ms p99={:.1}ms max={:.1}ms",
+            percentile(v, 0.50),
+            percentile(v, 0.95),
+            percentile(v, 0.99),
+            v.last().copied().unwrap_or(0.0)
+        )
+    };
+    Ok(format!(
+        "source observations: {recorded}/{probes} probes recorded\n  \
+         poll→response   {}\n  response→seen   {}\n  seen→book       {}\n  end-to-end      {}",
+        fmt("t", &mut poll_ms),
+        fmt("t", &mut first_seen_ms),
+        fmt("t", &mut book_ms),
+        fmt("t", &mut decision_ms),
+    ))
+}
+
+/// Nearest-rank percentile on a pre-sorted slice.
+fn percentile(sorted: &[f64], q: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+    let idx = ((q * (sorted.len() as f64 - 1.0)).ceil()) as usize;
+    sorted[idx.min(sorted.len() - 1)]
 }

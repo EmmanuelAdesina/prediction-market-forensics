@@ -149,6 +149,8 @@ pub trait MarketDataRepository {
     fn record_simulation(&self, row: &SimulationRow) -> Result<i64>;
     /// Retention pruning: ONLY raw frames, strictly older than `before_ns`.
     fn prune_raw_messages(&self, before_ns: i64) -> Result<u64>;
+    /// Session summary counts for the CLI report.
+    fn market_data_counts(&self) -> Result<(u64, u64, u64, u64)>;
     fn load_book_states(&self, token_id: &str, limit: u64) -> Result<Vec<BookStateRow>>;
     fn load_trades(&self, token_id: &str, limit: u64) -> Result<Vec<TradeEventRow>>;
 }
@@ -431,6 +433,20 @@ impl MarketDataRepository for crate::Database {
         )?;
         tx.commit()?;
         Ok(n as u64)
+    }
+
+    fn market_data_counts(&self) -> Result<(u64, u64, u64, u64)> {
+        let conn = self.inner_w();
+        let one = |sql: &str| -> Result<u64> {
+            Ok(conn
+                .query_row(sql, [], |r| r.get::<_, i64>(0))
+                .map(|v| v.max(0) as u64)?)
+        };
+        let raw = one("SELECT COUNT(*) FROM raw_market_messages")?;
+        let states = one("SELECT COUNT(*) FROM normalized_book_states")?;
+        let trades = one("SELECT COUNT(*) FROM public_trade_events")?;
+        let health = one("SELECT COUNT(*) FROM market_data_health")?;
+        Ok((raw, states, trades, health))
     }
 
     fn load_book_states(&self, token_id: &str, limit: u64) -> Result<Vec<BookStateRow>> {
