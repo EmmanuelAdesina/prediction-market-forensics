@@ -108,25 +108,72 @@ fn upsert_market_refs_from_fills(database: &Database, fills: &[SourceFill]) -> C
 // ---------------------------------------------------------------- ingest-markets
 
 pub async fn ingest_markets(cfg: &AppConfig, limit: Option<u64>) -> CmdResult<String> {
-    let database = db(cfg)?;
-    let client = MarketDataClient::new(&cfg.clob_base, &cfg.gamma_base)
-        .map_err(|e| format!("market data client: {e}"))?;
-    let cids = MarketRepository::condition_ids_needing_enrichment(&database, limit)
+    use std::sync::Arc as StdArc;
+    use tokio::sync::Semaphore;
+    use tokio::task::JoinSet;
+
+    let database = StdArc::new(db(cfg)?);
+    let client = StdArc::new(
+        MarketDataClient::new(&cfg.clob_base, &cfg.gamma_base)
+            .map_err(|e| format!("market data client: {e}"))?,
+    );
+    let cids = MarketRepository::condition_ids_needing_enrichment(database.as_ref(), limit)
         .map_err(|e| format!("query markets: {e}"))?;
     let total = cids.len();
+
+    // Bounded concurrency: short CLOB/Gamma fetches with a 3-way cap keeps
+    // aggregate request rate polite (~3 market pairs in flight) while not
+    // serializing behind multi-second timeouts.
+    const CONCURRENCY: usize = 3;
+    let permits = StdArc::new(Semaphore::new(CONCURRENCY));
+    let mut jobs: JoinSet<Result<(), String>> = JoinSet::new();
+    for cid in &cids {
+        let db = database.clone();
+        let client = client.clone();
+        let permit = permits.clone();
+        let cid = cid.clone();
+        jobs.spawn(async move {
+            let _guard = permit.acquire_owned().await;
+            // Small stagger so bursts never arrive simultaneously.
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            enrich_with_retry(&db, &client, &cid).await
+        });
+    }
     let mut done = 0usize;
     let mut errors = 0usize;
-    for cid in &cids {
-        tokio::time::sleep(Duration::from_millis(cfg.page_pause_ms / 4)).await;
-        match crate::markets::enrich_market(&database, &client, cid).await {
-            Ok(()) => done += 1,
+    while let Some(res) = jobs.join_next().await {
+        match res {
+            Ok(Ok(())) => done += 1,
+            Ok(Err(e)) => {
+                errors += 1;
+                tracing::warn!(error=%e, "market enrichment failed");
+            }
             Err(e) => {
                 errors += 1;
-                tracing::warn!(condition_id=%cid, error=%e, "market enrichment failed");
+                tracing::warn!(error=%e, "market enrichment task panicked");
             }
         }
     }
     Ok(format!("enriched {done}/{total} markets ({errors} errors)"))
+}
+
+/// One retry on transient failure (transport, 5xx, sqlite lock).
+async fn enrich_with_retry(
+    database: &std::sync::Arc<Database>,
+    client: &std::sync::Arc<MarketDataClient>,
+    condition_id: &str,
+) -> Result<(), String> {
+    let mut last = String::from("unknown");
+    for attempt in 0..2u32 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        }
+        match crate::markets::enrich_market(database, client, condition_id).await {
+            Ok(()) => return Ok(()),
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
 }
 
 // ---------------------------------------------------------------- classify
@@ -249,15 +296,17 @@ pub async fn reconcile_positions(cfg: &AppConfig) -> CmdResult<String> {
         |page| {
             IngestRepository::commit_page(
                 dbref,
-                &run,
-                page_index,
-                &Utc::now().to_rfc3339(),
-                page.http_status,
-                &page.url,
-                &page.query_params,
-                &page.raw_body.to_string(),
-                page.next_cursor.as_deref(),
-                page.has_more,
+                &tokor_persistence::ingest::PageRecord {
+                    run_id: run.clone(),
+                    page_index,
+                    fetched_at: Utc::now().to_rfc3339(),
+                    http_status: page.http_status,
+                    url: page.url.clone(),
+                    query_params: page.query_params.clone(),
+                    body_json: page.raw_body.to_string(),
+                    next_cursor: page.next_cursor.clone(),
+                    has_more: page.has_more,
+                },
                 &[],
             )
             .map_err(|e| {
@@ -332,13 +381,11 @@ fn compare_position(
     use rust_decimal_macros::dec;
 
     let get_f = |k: &str| -> Option<String> {
-        row.get(k)
-            .map(|v| match v {
-                serde_json::Value::String(s) => Some(s.clone()),
-                serde_json::Value::Number(n) => Some(n.to_string()),
-                _ => None,
-            })
-            .flatten()
+        row.get(k).and_then(|v| match v {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        })
     };
     let get_s =
         |k: &str| -> Option<String> { row.get(k).and_then(|v| v.as_str()).map(|s| s.to_string()) };
@@ -377,18 +424,16 @@ fn compare_position(
     let (delta_size, size_ok) = delta(&api_size, &ours_size, dec!(0.0001));
     let (delta_avg, avg_ok) = delta(&api_avg, &ours_avg, dec!(0.001));
 
+    // OPEN positions must match size + avg price. Positions whose history
+    // we flagged as incomplete are recorded as MISMATCH even when sizes
+    // coincide — the provenance is different and must stay visible.
+    let history_gap = ours
+        .as_ref()
+        .map(|p| p.history_probably_incomplete)
+        .unwrap_or(false);
     let verdict = if ours.is_none() {
         "API_ONLY"
-    } else if {
-        // OPEN positions must match size + avg price. Positions whose history
-        // we flagged as incomplete are recorded as MISMATCH even when sizes
-        // coincide — the provenance is different and must stay visible.
-        let history_gap = ours
-            .as_ref()
-            .map(|p| p.history_probably_incomplete)
-            .unwrap_or(false);
-        history_gap || !size_ok || !avg_ok
-    } {
+    } else if history_gap || !size_ok || !avg_ok {
         "MISMATCH"
     } else {
         "MATCH"
@@ -411,7 +456,7 @@ fn compare_position(
             "our FIFO history has pre-history disposals: activity window does not cover position origin"
         );
     }
-    if verdict == "MISMATCH" && size_ok == false {
+    if verdict == "MISMATCH" && !size_ok {
         notes["explanation"] = serde_json::json!("size delta beyond tolerance");
     }
 

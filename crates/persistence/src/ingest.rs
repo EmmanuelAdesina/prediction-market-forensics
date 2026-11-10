@@ -1,9 +1,9 @@
 //! The transactional page checkpoint: fills + raw page + run stats + cursor
 //! are committed as ONE SQLite transaction.
 //!
-//! Crash-invariant: after any crash, either the whole page (fills + raw capture
-//! + run accounting + cursor movement) is visible, or none of it is.
-//! Therefore restart recovery replays from last_cursor without duplication
+//! Crash-invariant: after any crash, either the whole page (fills, raw capture,
+//! run accounting, and cursor movement) is visible, or none of it is.
+//! Therefore restart recovery replays from `last_cursor` without duplication
 //! and never skips a page.
 
 use chrono::Utc;
@@ -28,6 +28,22 @@ pub struct PageCheckpoint {
 
 use crate::Database;
 
+/// Cohesive record of one fetched API page, persisted verbatim alongside its
+/// normalized fills inside the same transaction.
+#[derive(Debug, Clone)]
+pub struct PageRecord {
+    pub run_id: String,
+    pub page_index: u64,
+    pub fetched_at: String,
+    pub http_status: u16,
+    pub url: String,
+    pub query_params: String,
+    /// Full response body, preserved forensically verbatim.
+    pub body_json: String,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
 pub trait IngestRepository {
     /// Begin an acquisition run. Overwrites nothing: run metadata only.
     fn start_run(&self, run_id: &str, filters_json: &str, filters_fingerprint: &str) -> Result<()>;
@@ -37,19 +53,7 @@ pub trait IngestRepository {
 
     /// Persist one page + its fills + advanced cursor, atomically.
     /// Performs `INSERT OR IGNORE` per fill, returns the checkpoint.
-    fn commit_page(
-        &self,
-        run_id: &str,
-        page_index: u64,
-        fetched_at: &str,
-        http_status: u16,
-        url: &str,
-        query_params: &str,
-        body_json: &str,
-        next_cursor: Option<&str>,
-        has_more: bool,
-        fills: &[SourceFill],
-    ) -> Result<PageCheckpoint>;
+    fn commit_page(&self, page: &PageRecord, fills: &[SourceFill]) -> Result<PageCheckpoint>;
 
     /// Durable cursor state for a filter fingerprint.
     fn load_cursor(&self, filters_fingerprint: &str) -> Result<Option<(Option<String>, u64)>>;
@@ -150,19 +154,8 @@ impl IngestRepository for Database {
         Ok(())
     }
 
-    fn commit_page(
-        &self,
-        run_id: &str,
-        page_index: u64,
-        fetched_at: &str,
-        http_status: u16,
-        url: &str,
-        query_params: &str,
-        body_json: &str,
-        next_cursor: Option<&str>,
-        has_more: bool,
-        fills: &[SourceFill],
-    ) -> Result<PageCheckpoint> {
+    fn commit_page(&self, page: &PageRecord, fills: &[SourceFill]) -> Result<PageCheckpoint> {
+        let run_id = &page.run_id;
         let mut conn = self.inner_w();
         let tx = conn.transaction()?;
 
@@ -173,14 +166,14 @@ impl IngestRepository for Database {
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
             rusqlite::params![
                 run_id,
-                page_index as i64,
-                fetched_at,
-                http_status,
-                url,
-                query_params,
-                body_json,
-                next_cursor,
-                if has_more { 1 } else { 0 },
+                page.page_index as i64,
+                page.fetched_at,
+                page.http_status,
+                page.url,
+                page.query_params,
+                page.body_json,
+                page.next_cursor,
+                if page.has_more { 1 } else { 0 },
             ],
         )?;
 
@@ -196,7 +189,7 @@ impl IngestRepository for Database {
             }
         }
 
-        let cursor_payload = next_cursor.map(|c| c.to_string());
+        let cursor_payload = page.next_cursor.clone();
 
         // Run accounting (counters reflect committed page fill delta).
         tx.execute(
@@ -233,7 +226,7 @@ impl IngestRepository for Database {
             fills_inserted: inserted,
             fills_already_seen: already,
             non_trade_records: 0, // computed by caller if needed
-            page_index,
+            page_index: page.page_index,
             cursor_advanced: true,
         })
     }
@@ -389,26 +382,32 @@ mod tests {
     }
     use tokor_domain::activity::{Side, SourceFillRaw};
 
+    use super::PageRecord;
+
+    fn demo_page(index: u64, cursor: Option<&str>, has_more: bool) -> PageRecord {
+        PageRecord {
+            run_id: "r".into(),
+            page_index: index,
+            fetched_at: "now".into(),
+            http_status: 200,
+            url: "u".into(),
+            query_params: "q".into(),
+            body_json: "{}".into(),
+            next_cursor: cursor.map(str::to_owned),
+            has_more,
+        }
+    }
+
     #[test]
     fn commit_page_atomic_cursor_and_fills() {
         let db = Database::open_memory().unwrap();
         db.start_run("r1", "{}", "fp").unwrap();
         let f1 = demo_fill(Side::Buy, 100, 10.0);
         let f2 = demo_fill(Side::Buy, 110, 20.0);
-        let ck = db
-            .commit_page(
-                "r1",
-                0,
-                "now",
-                200,
-                "http://u?x",
-                "x=1",
-                "{\"data\":[]}",
-                Some("cur1"),
-                true,
-                &[f1.clone(), f2.clone()],
-            )
-            .unwrap();
+        let mut page = demo_page(0, Some("cur1"), true);
+        page.run_id = "r1".into();
+        page.body_json = "{\"data\":[]}".into();
+        let ck = db.commit_page(&page, &[f1.clone(), f2.clone()]).unwrap();
         assert_eq!(ck.fills_inserted, 2);
         assert_eq!(ck.fills_already_seen, 0);
         let (cursor, pages) = db.load_cursor("fp").unwrap().unwrap();
@@ -424,34 +423,12 @@ mod tests {
         let db = Database::open_memory().unwrap();
         db.start_run("r2", "{}", "fp2").unwrap();
         let f1 = demo_fill(Side::Sell, 200, 7.0);
-        let _ = db
-            .commit_page(
-                "r2",
-                0,
-                "now",
-                200,
-                "u",
-                "q",
-                "{}",
-                Some("c"),
-                false,
-                &[f1.clone()],
-            )
-            .unwrap();
-        let ck = db
-            .commit_page(
-                "r2",
-                1,
-                "now",
-                200,
-                "u",
-                "q",
-                "{}",
-                Some("c2"),
-                false,
-                &[f1.clone()],
-            )
-            .unwrap();
+        let mut p0 = demo_page(0, Some("c"), false);
+        p0.run_id = "r2".into();
+        let _ = db.commit_page(&p0, std::slice::from_ref(&f1)).unwrap();
+        let mut p1 = demo_page(1, Some("c2"), false);
+        p1.run_id = "r2".into();
+        let ck = db.commit_page(&p1, std::slice::from_ref(&f1)).unwrap();
         assert_eq!(ck.fills_inserted, 0);
         assert_eq!(ck.fills_already_seen, 1);
         assert_eq!(db.fills_count().unwrap(), 1);
@@ -469,20 +446,9 @@ mod tests {
             db.start_run("r3", "{}", "fp3").unwrap();
             let mut f = demo_fill(Side::Buy, 300, 2.0);
             f.raw_json = f.raw_json.replace("\"timestamp\":300", "\"timestamp\":301");
-            let _ = db
-                .commit_page(
-                    "r3",
-                    0,
-                    "now",
-                    200,
-                    "u",
-                    "q",
-                    "{}",
-                    Some("cursorX"),
-                    true,
-                    &[f.clone()],
-                )
-                .unwrap();
+            let mut page = demo_page(0, Some("cursorX"), true);
+            page.run_id = "r3".into();
+            let _ = db.commit_page(&page, &[f.clone()]).unwrap();
             db.finish_run("r3", "COMPLETE", Some("cursorX")).unwrap();
         }
         let db2 = Database::open(&path).unwrap();

@@ -9,11 +9,8 @@ use tokor_domain::activity::{ActivityFilters, ActivityType};
 use tokor_persistence::ingest::IngestRepository;
 use tokor_persistence::Database;
 use tokor_wallet_feed::http::HttpWalletFeed;
-use tokor_wallet_feed::ingestor::{FullHistoryIngestor, IngestProgress, DATA_API_DEFAULT};
-use tokor_wallet_feed::provider::{
-    build_activity_url, DataApiActivityRequest, RetryingProvider, WalletFeedProvider,
-};
-use tokor_wallet_feed::rate_limit::Pacer;
+use tokor_wallet_feed::ingestor::FullHistoryIngestor;
+use tokor_wallet_feed::provider::RetryingProvider;
 use wiremock::matchers::{method, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

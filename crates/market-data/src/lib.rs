@@ -35,8 +35,8 @@ impl MarketDataClient {
         Ok(Self {
             client: reqwest::Client::builder()
                 .user_agent(USER_AGENT)
-                .connect_timeout(Duration::from_secs(10))
-                .timeout(Duration::from_secs(30))
+                .connect_timeout(Duration::from_secs(5))
+                .timeout(Duration::from_secs(10))
                 .build()?,
             clob_base: clob_base.to_string(),
             gamma_base: gamma_base.to_string(),
@@ -100,8 +100,8 @@ impl MarketDataClient {
             tokens: None,
             active: clob.get("active").and_then(|v| v.as_bool()),
             closed: clob.get("closed").and_then(|v| v.as_bool()),
-            minimum_tick_size: clob.get("minimum_tick_size").and_then(|v| str_val(v)),
-            minimum_order_size: clob.get("minimum_order_size").and_then(|v| str_val(v)),
+            minimum_tick_size: clob.get("minimum_tick_size").and_then(str_val),
+            minimum_order_size: clob.get("minimum_order_size").and_then(str_val),
             neg_risk: clob.get("neg_risk").and_then(|v| v.as_bool()),
         })
     }

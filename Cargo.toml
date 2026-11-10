@@ -37,7 +37,7 @@ rand = "0.8"
 toml = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "signal"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
 proptest = "1"
 wiremock = "0.6"
 # Pinned for later phases (CLOB adapter); not consumed by Phase 1 code paths.

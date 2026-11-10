@@ -51,7 +51,7 @@ fn wti_leak_fixed() {
     {
         let evidence = classify(&case.market_ref(String::new()));
         assert_eq!(evidence.verdict, CryptoVerdict::NonCrypto, "{}", case.name);
-        assert!(evidence.negated_signals.is_empty() == false);
+        assert!(!evidence.negated_signals.is_empty());
     }
 }
 

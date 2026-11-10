@@ -8,6 +8,7 @@
 //! 2. **Crypto affirmation**: at least one reliable crypto signal — icon
 //!    filename markers ("BTC", "ETH"), event tags, or word-boundary asset
 //!    naming in title/slug/description.
+//!
 //! Everything else → `Unknown`: out of scope by default, queued for review.
 //!
 //! Verdicts are pure functions of their inputs; every decision records its

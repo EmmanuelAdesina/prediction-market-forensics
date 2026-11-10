@@ -116,15 +116,17 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
             }
 
             let checkpoint = self.db.commit_page(
-                run_id,
-                page_index,
-                &chrono::Utc::now().to_rfc3339(),
-                page.http_status,
-                &page.url,
-                &page.query_params,
-                &serialize_body(&batch.raw_body),
-                batch.next_cursor.as_deref(),
-                batch.has_more,
+                &tokor_persistence::ingest::PageRecord {
+                    run_id: run_id.to_string(),
+                    page_index,
+                    fetched_at: chrono::Utc::now().to_rfc3339(),
+                    http_status: page.http_status,
+                    url: page.url.clone(),
+                    query_params: page.query_params.clone(),
+                    body_json: serialize_body(&batch.raw_body),
+                    next_cursor: batch.next_cursor.clone(),
+                    has_more: batch.has_more,
+                },
                 &batch.fills,
             )?;
 
