@@ -1,0 +1,15 @@
+[package]
+name = "tokor-shadow-exec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Phase 2 §5 shadow execution: queue-ahead estimation, copy simulators, $49 portfolio, markouts. Pure functions over recorded public data — no orders, no keys."
+
+[dependencies]
+tokor-domain.workspace = true
+tokor-recorder.workspace = true
+rust_decimal.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+rust_decimal_macros.workspace = true

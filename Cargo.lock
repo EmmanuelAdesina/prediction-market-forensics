@@ -2253,6 +2253,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokor-shadow-exec"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "tokor-domain",
+ "tokor-recorder",
+]
+
+[[package]]
 name = "tokor-wallet-feed"
 version = "0.1.0"
 dependencies = [

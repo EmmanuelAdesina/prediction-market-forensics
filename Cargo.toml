@@ -7,6 +7,7 @@ members = [
     "crates/market-data",
     "crates/market-classifier",
     "crates/recorder",
+    "crates/shadow-exec",
     "crates/application",
 ]
 
