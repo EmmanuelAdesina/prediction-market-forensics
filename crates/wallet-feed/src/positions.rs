@@ -47,6 +47,18 @@ pub fn build_positions_url(
     limit: u64,
     cursor: Option<&str>,
 ) -> (String, String) {
+    build_positions_url_status(base_url, user, limit, cursor, None)
+}
+
+/// `status` selects the API's position view: `OPEN`, `CLOSED`, `REDEEMABLE`,
+/// or None for the default (open) view.
+pub fn build_positions_url_status(
+    base_url: &str,
+    user: &str,
+    limit: u64,
+    cursor: Option<&str>,
+    status: Option<&str>,
+) -> (String, String) {
     let mut url = format!(
         "{}/positions?user={}&limit={}",
         base_url.trim_end_matches('/'),
@@ -54,6 +66,10 @@ pub fn build_positions_url(
         limit
     );
     let mut query = format!("user={}&limit={}", user.to_ascii_lowercase(), limit);
+    if let Some(st) = status {
+        url.push_str(&format!("&status={st}"));
+        query.push_str(&format!("&status={st}"));
+    }
     if let Some(c) = cursor {
         url.push_str("&cursor=");
         url.push_str(&rfc3986_encode(c));
@@ -93,7 +109,18 @@ impl HttpPositionsFetcher {
         limit: u64,
         cursor: Option<&str>,
     ) -> Result<FetchedPositionsPage, PositionsError> {
-        let (url, query) = build_positions_url(&self.base_url, user, limit, cursor);
+        self.fetch_page_status(user, limit, cursor, None).await
+    }
+
+    /// Fetch with an explicit status view (`OPEN`/`CLOSED`/`REDEEMABLE`).
+    pub async fn fetch_page_status(
+        &self,
+        user: &str,
+        limit: u64,
+        cursor: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<FetchedPositionsPage, PositionsError> {
+        let (url, query) = build_positions_url_status(&self.base_url, user, limit, cursor, status);
         let resp = self
             .client
             .get(&url)
@@ -181,6 +208,27 @@ pub async fn walk_positions<F, T>(
     max_pages: u64,
     page_pause: Duration,
     retry: PaginationRetry,
+    on_page: F,
+) -> Result<Vec<T>, PositionsError>
+where
+    F: FnMut(&FetchedPositionsPage) -> Result<T, PositionsError>,
+{
+    walk_positions_status(
+        fetcher, user, limit, max_pages, page_pause, retry, None, on_page,
+    )
+    .await
+}
+
+/// Walk with an explicit status view (see `build_positions_url_status`).
+#[allow(clippy::too_many_arguments)]
+pub async fn walk_positions_status<F, T>(
+    fetcher: &HttpPositionsFetcher,
+    user: &str,
+    limit: u64,
+    max_pages: u64,
+    page_pause: Duration,
+    retry: PaginationRetry,
+    status: Option<&str>,
     mut on_page: F,
 ) -> Result<Vec<T>, PositionsError>
 where
@@ -196,7 +244,8 @@ where
         if page_index >= max_pages {
             return Ok(results);
         }
-        let page = fetch_with_retry(fetcher, user, limit, cursor.as_deref(), &retry).await?;
+        let page = fetch_with_retry_status(fetcher, user, limit, cursor.as_deref(), status, &retry)
+            .await?;
         let done = !page.has_more;
         let next = page.next_cursor.clone();
         results.push(on_page(&page)?);
@@ -226,16 +275,17 @@ impl Default for PaginationRetry {
     }
 }
 
-async fn fetch_with_retry(
+async fn fetch_with_retry_status(
     fetcher: &HttpPositionsFetcher,
     user: &str,
     limit: u64,
     cursor: Option<&str>,
+    status: Option<&str>,
     policy: &PaginationRetry,
 ) -> Result<FetchedPositionsPage, PositionsError> {
     let mut attempt = 0u32;
     loop {
-        match fetcher.fetch_page(user, limit, cursor).await {
+        match fetcher.fetch_page_status(user, limit, cursor, status).await {
             Ok(p) => return Ok(p),
             Err(PositionsError::Upstream(
                 ref e @ (IngestionError::RateLimited { .. } | IngestionError::Transient { .. }),

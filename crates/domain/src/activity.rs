@@ -48,8 +48,14 @@ impl fmt::Display for Side {
     }
 }
 
-/// The activity record types the Data API can return. Phase 1 consumes
-/// `Trade` (fills) only; other variants exist downstream but are recorded raw.
+/// The activity record types the Data API can return. Phase 1 consumed
+/// `Trade` (fills) only; Phase 1.5 normalizes every observed type
+/// (MERGE/REDEEM disposals, cash events: rewards/rebates/yield).
+///
+/// Verified wallet-observed types (Phase 1.5 census over 19,431 unfiltered
+/// rows): TRADE, MERGE, REDEEM, REWARD, YIELD, TAKER_REBATE, MAKER_REBATE.
+/// SPLIT and CONVERSION returned zero rows for this wallet but remain
+/// supported (verified-not-assumed).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum ActivityType {
@@ -59,6 +65,49 @@ pub enum ActivityType {
     Redeem,
     Reward,
     Conversion,
+    /// Distribution cash events (e.g. Dana/USDC yield): cash-only rows.
+    #[serde(rename = "YIELD")]
+    Yield,
+    #[serde(rename = "TAKER_REBATE")]
+    TakerRebate,
+    #[serde(rename = "MAKER_REBATE")]
+    MakerRebate,
+}
+
+impl ActivityType {
+    /// The uppercase wire label.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            ActivityType::Trade => "TRADE",
+            ActivityType::Split => "SPLIT",
+            ActivityType::Merge => "MERGE",
+            ActivityType::Redeem => "REDEEM",
+            ActivityType::Reward => "REWARD",
+            ActivityType::Conversion => "CONVERSION",
+            ActivityType::Yield => "YIELD",
+            ActivityType::TakerRebate => "TAKER_REBATE",
+            ActivityType::MakerRebate => "MAKER_REBATE",
+        }
+    }
+
+    /// Event types that touch ERC-1155 share inventory.
+    pub const fn is_inventory_event(self) -> bool {
+        matches!(
+            self,
+            ActivityType::Trade | ActivityType::Split | ActivityType::Merge | ActivityType::Redeem
+        )
+    }
+
+    /// Event types that are cash-only (no token inventory effect).
+    pub const fn is_cash_only_event(self) -> bool {
+        matches!(
+            self,
+            ActivityType::Reward
+                | ActivityType::Yield
+                | ActivityType::TakerRebate
+                | ActivityType::MakerRebate
+        )
+    }
 }
 
 /// Exact raw shape of one record from `GET /v2/activity`.
@@ -124,15 +173,26 @@ pub struct SourceFill {
     pub side: Side,
     /// Share quantity (positive).
     pub size: Decimal,
-    /// USDC notional (may be `size * price` up to rounding by the source).
-    pub usdc_size: Decimal,
     /// Execution price, always in `[0, 1]` — the source's displayed view
     /// (observed: floor-rounded to 2 decimals on some rows).
     pub price: Decimal,
-    /// Exact per-share price implied by source amounts, `usdc_size / size`.
-    /// Used for cost basis (matches Polymarket's own `avg_price` semantics);
-    /// `price` stays in the identity composite for source stability.
-    pub exec_price: Decimal,
+    /// Gross notional `price × size` — fee-free view of the trade.
+    ///
+    /// Phase-1.5 accounting correction: the four money quantities of a fill
+    /// are distinct and must never be conflated:
+    ///   displayed execution price = `price`
+    ///   gross notional            = `gross_usdc()`
+    ///   charged fee               = `fee_reconciliation.fee_usdc` (category
+    ///                               model, docs/02)
+    ///   total cash flow           = `usdc_size`
+    pub usdc_size: Decimal,
+    /// Per-share CASH amount `usdc_size / size` (fee-inclusive for taker
+    /// fills, gross for makers). **This is NOT the execution price** — the
+    /// execution price is the displayed `price` field. Retained because it
+    /// reproduces Polymarket's own cost-basis arithmetic in the position
+    /// reconstruction; the fee component is tracked separately so the gross
+    /// view is always recoverable.
+    pub cash_implied_price: Decimal,
     pub outcome_index: i64,
     pub outcome: String,
     /// Market-scoped denormalized metadata from the activity record.
@@ -145,6 +205,13 @@ pub struct SourceFill {
 }
 
 impl SourceFill {
+    /// Gross notional: displayed execution price × shares, fee-free.
+    /// The charged fee (if any) lives in `fee_reconciliation`; total cash is
+    /// `usdc_size`. Distinct fields by Phase-1.5 accounting contract.
+    pub fn gross_usdc(&self) -> Decimal {
+        self.price * self.size
+    }
+
     /// Validate + normalize a raw record. Never discards information:
     /// the raw JSON string is carried through verbatim.
     pub fn from_raw(raw: &SourceFillRaw, raw_json: &str) -> Result<SourceFill, IngestionError> {
@@ -193,27 +260,30 @@ impl SourceFill {
             )));
         }
 
-        // Exact execution price implied by the source amounts: usdc/size.
+        // Exact per-share price implied by the source amounts: usdc/size.
         // This is source-derived arithmetic, not fabrication — but only
         // trustworthy when the displayed price corroborates it.
-        let exec_price = usdc / size;
+        let cash_implied_price = usdc / size;
 
-        // Accept when either (a) usdc ≈ price*size within 5% (f64-rounding
-        // tolerance for source arithmetic), or (b) the displayed price is the
-        // 2-decimal floor of the exact price (observed source behavior:
-        // `price` is floor₂(usdc/size) while usdc keeps full precision).
-        let exact_floor_ok = price <= exec_price
-            && exec_price < price + Decimal::new(1, 2)
-            && (usdc - implied).abs() / implied > Decimal::new(5, 2);
-        let tolerance_ok = (usdc - implied).abs() / implied <= Decimal::new(5, 2);
-        if !exact_floor_ok && !tolerance_ok {
-            // Outside any verified interpretation: cash notional exceeds
-            // every reconcilable price view. Preserved raw upstream, rejected
-            // here (documented: fee-premium suspect rows await the
-            // fee-schedule verification referenced in the risk register).
+        // Fee-aware cash consistency (docs/02 §2 — the verified model):
+        // total cash is `gross + fee` where `fee = size × rate × p × (1−p)`,
+        // rate ≤ 0.07 across every published category, serialized by the
+        // backend with a ≤ 2×10⁻⁵ absolute float envelope. Ingestion accepts
+        // any row whose cash lies in [gross − env, gross × (1 + 0.07) + env];
+        // category-exact pinning (verdict + maker/taker face) happens in the
+        // fee model (`derive-fees`), never here. Verified over the full
+        // 13,956-row raw corpus: 0 rows outside this band.
+        let envelope = Decimal::new(2, 5); // 2×10⁻⁵ USDC
+        let max_fee = implied * Decimal::new(7, 2) + envelope; // rate ≤ 0.07
+        let fee_band_ok = usdc >= implied - envelope && usdc - implied <= max_fee;
+        if !fee_band_ok {
+            // Outside every published fee schedule: cash cannot be
+            // reconciled with the displayed price under any category.
+            // Preserved raw upstream, rejected here — never force-fit.
             return Err(IngestionError::Validation(format!(
-                "usdc_size {usdc} is inconsistent with price {price} × size {size} \
-                 (exactiable price {exec_price} is not the 2dp floor of the displayed price)"
+                "usdc_size {usdc} outside the fee band of gross {implied} \
+                 (price {price} × size {size}): cash − gross must lie in \
+                 [−2e-5, 0.07 × gross + 2e-5]"
             )));
         }
 
@@ -237,7 +307,7 @@ impl SourceFill {
             size,
             usdc_size: usdc,
             price,
-            exec_price,
+            cash_implied_price,
             outcome_index: raw.outcome_index,
             outcome: raw.outcome.clone(),
             market_title: raw.title.clone(),
@@ -329,18 +399,7 @@ pub struct ActivityFilters {
 impl ActivityFilters {
     /// Canonical fingerprint of the query parameters (order-stable).
     pub fn fingerprint(&self) -> String {
-        let mut types: Vec<&str> = self
-            .record_types
-            .iter()
-            .map(|t| match t {
-                ActivityType::Trade => "TRADE",
-                ActivityType::Split => "SPLIT",
-                ActivityType::Merge => "MERGE",
-                ActivityType::Redeem => "REDEEM",
-                ActivityType::Reward => "REWARD",
-                ActivityType::Conversion => "CONVERSION",
-            })
-            .collect();
+        let mut types: Vec<&str> = self.record_types.iter().map(|t| t.as_str()).collect();
         types.sort();
         format!(
             "user={}|types={}|limit={}",
@@ -351,19 +410,22 @@ impl ActivityFilters {
     }
 }
 
-/// One page of activity: raw envelope + normalized fills.
+/// One page of activity: raw envelope + normalized fills + all-type events.
 ///
 /// The raw envelope is preserved verbatim for forensic reconstruction.
 #[derive(Debug, Clone)]
 pub struct IngestionBatch {
     /// Raw JSON body as received (may be larger than the sum of normalized rows).
     pub raw_body: Json,
-    /// Normalized fills (only TRADE rows in Phase 1).
+    /// TRADE fills passing the strict Phase 1 validation.
     pub fills: Vec<SourceFill>,
-    /// Non-TRADE records preserved raw (counted, not normalized).
-    pub non_trade_records: usize,
-    /// TRADE rows that failed validation — never silently dropped.
+    /// All-type activity events (Phase 1.5): lenient normalization with
+    /// deterministic occurrence identity.
+    pub events: Vec<crate::activity_events::ActivityEvent>,
+    /// Rows preserved raw but failing normalization — never silently dropped.
     pub invalid_records: usize,
+    /// Rows normalized as events but not as strict fills (non-TRADE types).
+    pub non_trade_records: usize,
     /// Opaque continuation cursor from the server.
     pub next_cursor: Option<String>,
     pub has_more: bool,
@@ -384,6 +446,10 @@ impl IngestionBatch {
     /// Parse and validate a page response body into a batch.
     /// Rows that fail validation are counted and *surfaced*, not silently dropped.
     pub fn parse(body: &Json, filters: &ActivityFilters) -> Result<IngestionBatch, IngestionError> {
+        // All-type events first (lenient, occurrence-identities assigned).
+        let activity = crate::activity_events::parse_activity_batch(body)?;
+
+        // Strict TRADE fills (Phase 1 path) on top of the same rows.
         let data = body
             .get("data")
             .and_then(|d| d.as_array())
@@ -399,12 +465,16 @@ impl IngestionBatch {
             let raw_json = serde_json::to_string(row).map_err(|e| {
                 IngestionError::Validation(format!("row re-serialization failed: {e}"))
             })?;
-            let raw: SourceFillRaw = serde_json::from_str(&raw_json).map_err(|e| {
-                IngestionError::Validation(format!("row does not match activity schema: {e}"))
-            })?;
+            let raw: SourceFillRaw = match serde_json::from_str(&raw_json) {
+                Ok(r) => r,
+                Err(_) => {
+                    // Not a TRADE-shaped row (other types legitimately omit
+                    // side/price fields); already normalized as an event.
+                    non_trade += 1;
+                    continue;
+                }
+            };
             if raw.record_type != ActivityType::Trade {
-                // Non-trade activity types are outside Phase 1 scope; they are
-                // still preserved inside raw_body. Count but do not normalize.
                 non_trade += 1;
                 continue;
             }
@@ -442,8 +512,9 @@ impl IngestionBatch {
         Ok(IngestionBatch {
             raw_body: body.clone(),
             fills,
+            events: activity.events,
+            invalid_records: activity.invalid + invalid,
             non_trade_records: non_trade,
-            invalid_records: invalid,
             next_cursor,
             has_more: has_more.unwrap_or(false),
             meta: PageMeta {

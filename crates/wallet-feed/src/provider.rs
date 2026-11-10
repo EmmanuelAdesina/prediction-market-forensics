@@ -89,6 +89,16 @@ impl<P: WalletFeedProvider> RetryingProvider<P> {
         jitter.min(self.max_delay_ms)
     }
 
+    /// Rate-limit delay: the base full-jitter backoff, raised to the server's
+    /// `Retry-After` hint (seconds) when present. The hint is capped at 60s —
+    /// a hostile/huge hint must not stall a walk for hours (observed once
+    /// live: an unbounded hint pinned a page fetch for ~an hour).
+    fn effective_delay_ms(&self, attempt: u32, hint_secs: Option<u64>) -> u64 {
+        let base = self.delay_for(attempt);
+        let hint_ms = hint_secs.unwrap_or(0).saturating_mul(1000).min(60_000);
+        base.max(hint_ms)
+    }
+
     pub async fn fetch_with_retry(
         &self,
         request: &DataApiActivityRequest,
@@ -108,9 +118,7 @@ impl<P: WalletFeedProvider> RetryingProvider<P> {
                             message: "retries exhausted".into(),
                         }));
                     }
-                    let delay = self
-                        .delay_for(attempt)
-                        .max(retry_after_hint.unwrap_or(0).saturating_mul(1000));
+                    let delay = self.effective_delay_ms(attempt, retry_after_hint);
                     tracing::warn!(attempt, delay_ms = delay, "rate limited; backing off");
                     tokio::time::sleep(Duration::from_millis(delay)).await;
                 }
@@ -167,15 +175,7 @@ pub fn build_activity_url(
 }
 
 pub const fn activity_type_str(t: tokor_domain::activity::ActivityType) -> &'static str {
-    use tokor_domain::activity::ActivityType::*;
-    match t {
-        Trade => "TRADE",
-        Split => "SPLIT",
-        Merge => "MERGE",
-        Redeem => "REDEEM",
-        Reward => "REWARD",
-        Conversion => "CONVERSION",
-    }
+    t.as_str()
 }
 
 fn rfc3986_encode(s: &str) -> String {
@@ -195,6 +195,21 @@ fn rfc3986_encode(s: &str) -> String {
 mod tests {
     use super::*;
     use tokor_domain::activity::ActivityType;
+
+    /// Test double: never fetched — the delay math below never hits the wire.
+    struct NoopProvider;
+
+    impl WalletFeedProvider for NoopProvider {
+        fn fetch_activity_page(
+            &self,
+            _request: &DataApiActivityRequest,
+        ) -> impl std::future::Future<Output = Result<FetchedPage, WalletFeedError>> + Send
+        {
+            std::future::ready(Err(WalletFeedError::Upstream(
+                tokor_domain::error::IngestionError::Validation("unused".into()),
+            )))
+        }
+    }
 
     #[test]
     fn url_construction_resends_identical_filters() {
@@ -223,5 +238,22 @@ mod tests {
         };
         let url = build_activity_url("https://data-api.polymarket.com/v2", &f, Some("a b+?&="));
         assert!(url.contains("a%20b%2B%3F%26%3D"), "url: {url}");
+    }
+
+    /// The rate-limit delay honors the server hint, but never beyond the 60s
+    /// cap — a huge hint must not stall a walk for hours (observed live).
+    #[test]
+    fn retry_after_hint_is_capped() {
+        let p = RetryingProvider::new(NoopProvider);
+        assert_eq!(p.effective_delay_ms(0, Some(1)), 1_000);
+        assert_eq!(p.effective_delay_ms(0, Some(60)), 60_000);
+        assert_eq!(p.effective_delay_ms(0, Some(3_600)), 60_000, "capped");
+        // no hint / hint 0 → the base full-jitter backoff, within bounds
+        for _ in 0..50 {
+            let d = p.effective_delay_ms(0, None);
+            assert!(d <= p.max_delay_ms);
+            let d = p.effective_delay_ms(0, Some(0));
+            assert!(d <= p.max_delay_ms);
+        }
     }
 }

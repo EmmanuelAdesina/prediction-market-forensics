@@ -11,11 +11,14 @@
 //!   and is enforced with `INSERT OR IGNORE`; the return value reports how
 //!   many rows were actually new.
 
+pub mod activity;
 pub mod ingest;
+pub mod market_data;
 pub mod markets;
 pub mod recon;
 pub mod report;
 
+pub use activity::{ActivityCheckpoint, ActivityRepository, FeeRow, PositionSnapshotRow};
 pub use ingest::{IngestRepository, PageCheckpoint};
 pub use report::{PositionCounts, ReportRepository, RunSummary};
 
@@ -50,6 +53,14 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0002_markets_positions",
         include_str!("../../../migrations/0002_markets_positions.sql"),
+    ),
+    (
+        "0003_activity_fees_positions",
+        include_str!("../../../migrations/0003_activity_fees_positions.sql"),
+    ),
+    (
+        "0004_market_data",
+        include_str!("../../../migrations/0004_market_data.sql"),
     ),
 ];
 
@@ -164,12 +175,16 @@ mod tests {
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN
                 ('raw_api_pages','source_fills','acquisition_runs','wallet_cursor_state',
                  'markets','market_tokens','positions_reconstructed','position_lots_remaining',
-                 'position_reconciliations','schema_migrations')",
+                 'position_reconciliations','schema_migrations',
+                 'activity_events','fee_reconciliation','positions_snapshot',
+                 'market_subscriptions','raw_market_messages','order_book_snapshots',
+                 'order_book_deltas','normalized_book_states','public_trade_events',
+                 'market_data_health','source_observations','execution_simulations')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 10);
+        assert_eq!(tables, 22);
         let versions: Vec<String> = conn
             .prepare("SELECT version FROM schema_migrations ORDER BY version")
             .unwrap()
@@ -179,7 +194,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             versions,
-            vec!["0001_wallet_activity", "0002_markets_positions"]
+            vec![
+                "0001_wallet_activity",
+                "0002_markets_positions",
+                "0003_activity_fees_positions",
+                "0004_market_data",
+            ]
         );
     }
 

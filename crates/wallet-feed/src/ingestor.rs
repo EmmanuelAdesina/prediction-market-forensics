@@ -10,6 +10,7 @@
 //! - has_more=true without next_cursor is a feed inconsistency → hard abort.
 
 use tokor_domain::activity::{ActivityFilters, WalletCursor};
+use tokor_persistence::activity::ActivityRepository;
 use tokor_persistence::ingest::IngestRepository;
 
 use crate::provider::{
@@ -33,6 +34,11 @@ pub struct IngestProgress {
     pub pages: u64,
     pub fills_inserted: u64,
     pub fills_duplicate: u64,
+    /// Normalized activity events (all types) actually inserted.
+    pub events_inserted: u64,
+    pub events_duplicate: u64,
+    /// Rows preserved raw but failing normalization (surfaced, never dropped).
+    pub invalid_rows: u64,
     pub non_trade_records: u64,
     pub complete: bool,
     pub last_cursor: Option<String>,
@@ -63,7 +69,6 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
             )))
         })?;
         self.db.start_run(run_id, &filters_json, &fingerprint)?;
-
         let durable: Option<WalletCursor> = {
             let (cursor, pages) = self.db.load_cursor(&fingerprint)?.unwrap_or((None, 0));
             Some(WalletCursor {
@@ -85,6 +90,9 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
             pages: 0,
             fills_inserted: 0,
             fills_duplicate: 0,
+            events_inserted: 0,
+            events_duplicate: 0,
+            invalid_rows: 0,
             non_trade_records: 0,
             complete: false,
             last_cursor: cursor.clone(),
@@ -106,16 +114,25 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
                 filters: filters.clone(),
                 cursor: cursor.clone(),
             };
+            // Phase-2 §4 latency groundwork: independent wall-clock stamps for
+            // poll start and HTTP response (monotonic elapsed for pacing).
+            let fetch_started = std::time::Instant::now();
             let page = self.provider.fetch_activity_page(&request).await?;
+            tracing::info!(
+                page_index,
+                poll_start = fetch_started.elapsed().as_millis() as u64,
+                rows = page.batch.events.len(),
+                "activity page fetched"
+            );
             let batch = &page.batch;
 
-            // A page with no data, no more, and no cursor ends the walk.
-            if batch.fills.is_empty() && !batch.has_more && batch.next_cursor.is_none() {
+            // A page with no events, no more, and no cursor ends the walk.
+            if batch.events.is_empty() && !batch.has_more && batch.next_cursor.is_none() {
                 progress.terminal_reason = "backend_empty_no_more";
                 break;
             }
 
-            let checkpoint = self.db.commit_page(
+            let checkpoint = self.db.commit_activity_page(
                 &tokor_persistence::ingest::PageRecord {
                     run_id: run_id.to_string(),
                     page_index,
@@ -127,12 +144,17 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
                     next_cursor: batch.next_cursor.clone(),
                     has_more: batch.has_more,
                 },
+                &batch.events,
                 &batch.fills,
+                batch.invalid_records,
             )?;
 
             progress.pages = page_index + 1;
             progress.fills_inserted += checkpoint.fills_inserted;
             progress.fills_duplicate += checkpoint.fills_already_seen;
+            progress.events_inserted += checkpoint.events_inserted;
+            progress.events_duplicate += checkpoint.events_already_seen;
+            progress.invalid_rows += checkpoint.invalid_rows as u64;
             progress.non_trade_records += batch.non_trade_records as u64;
             progress.last_cursor = batch.next_cursor.clone();
             page_index += 1;

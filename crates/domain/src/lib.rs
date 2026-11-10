@@ -9,8 +9,10 @@
 //! APIs emit numbers; even there we convert immediately and never round-trip.
 
 pub mod activity;
+pub mod activity_events;
 pub mod classification;
 pub mod error;
+pub mod fees;
 pub mod market;
 pub mod position;
 
@@ -18,10 +20,20 @@ pub use activity::{
     event_identity, ActivityFilters, ActivityType, IngestionBatch, Outcome, OutcomeToken, PageMeta,
     Side, SourceFill, SourceFillRaw, WalletCursor,
 };
+pub use activity_events::{
+    activity_event_from_raw, activity_event_identity, parse_activity_batch, ActivityBatch,
+    ActivityEvent, ActivityEventRaw,
+};
 pub use classification::{ClassifierEvidence, CryptoVerdict};
 pub use error::IngestionError;
 pub use market::MarketRef;
 pub use position::{Lot, PositionBook, PositionState};
 
+#[cfg(test)]
+mod accounting_tests;
+#[cfg(test)]
+mod activity_event_tests;
+#[cfg(test)]
+mod fee_tests;
 #[cfg(test)]
 mod tests;

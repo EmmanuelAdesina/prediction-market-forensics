@@ -27,6 +27,11 @@ enum Command {
         limit: Option<u64>,
         max_pages: Option<u64>,
     },
+    IngestActivity {
+        full: bool,
+        limit: Option<u64>,
+        max_pages: Option<u64>,
+    },
     IngestMarkets {
         limit: Option<u64>,
     },
@@ -35,6 +40,14 @@ enum Command {
     },
     ReconstructPositions,
     ReconcilePositions,
+    IngestPositions,
+    DeriveFees {
+        categories: Option<PathBuf>,
+    },
+    DeriveParquet {
+        dataset: String,
+        out: PathBuf,
+    },
     Report,
 }
 
@@ -46,11 +59,20 @@ COMMANDS:
   config-validate                        Validate the configuration and exit.
   ingest-wallet [--full|--resume] [--limit N] [--max-pages N]
                                          Acquire wallet activity (Data API v2).
+  ingest-activity [--full|--resume] [--limit N] [--max-pages N]
+                                         Acquire ALL wallet activity types
+                                         (Phase 1.5: merges, redeems, rebates...).
   ingest-markets [--limit N]             Enrich market metadata (CLOB + Gamma).
   classify-markets [--reset]             Run the crypto classifier; --reset re-evaluates
                                          all recorded classifications (use after re-enrichment).
   reconstruct-positions                  Rebuild FIFO positions from persisted fills.
   reconcile-positions                    Compare reconstruction against /v2/positions.
+  ingest-positions                       Snapshot /v2/positions (OPEN+CLOSED+REDEEMABLE)
+                                         into positions_snapshot (Phase 1.5).
+  derive-fees [--categories PATH]        Classify fills under the verified fee model
+                                         (default: data/derived/event_fee_categories.json).
+  derive-parquet <fees|activity|inventory> --out PATH
+                                         Emit Phase 1.5 parquet datasets.
   report                                 Print a data-foundation status report."
         .to_string()
 }
@@ -82,6 +104,11 @@ fn parse_args() -> Result<Cli, String> {
             limit: flag_value_u64(&flags, "--limit"),
             max_pages: flag_value_u64(&flags, "--max-pages"),
         },
+        Some("ingest-activity") => Command::IngestActivity {
+            full: !flags.iter().any(|f| f == "--resume"),
+            limit: flag_value_u64(&flags, "--limit"),
+            max_pages: flag_value_u64(&flags, "--max-pages"),
+        },
         Some("ingest-markets") => Command::IngestMarkets {
             limit: flag_value_u64(&flags, "--limit"),
         },
@@ -90,6 +117,17 @@ fn parse_args() -> Result<Cli, String> {
         },
         Some("reconstruct-positions") => Command::ReconstructPositions,
         Some("reconcile-positions") => Command::ReconcilePositions,
+        Some("ingest-positions") => Command::IngestPositions,
+        Some("derive-fees") => Command::DeriveFees {
+            categories: flag_value_path(&flags, "--categories"),
+        },
+        Some("derive-parquet") => Command::DeriveParquet {
+            dataset: positional
+                .get(1)
+                .cloned()
+                .ok_or("derive-parquet needs a dataset: fees|activity|inventory")?,
+            out: flag_value_path(&flags, "--out").ok_or("derive-parquet needs --out PATH")?,
+        },
         Some("report") => Command::Report,
         Some(other) => return Err(format!("unknown command {other:?}\n{}", usage())),
         None => return Err(usage()),
@@ -105,6 +143,11 @@ fn parse_args() -> Result<Cli, String> {
 fn flag_value_u64(flags: &[String], name: &str) -> Option<u64> {
     let idx = flags.iter().position(|f| f == name)?;
     flags.get(idx + 1).and_then(|v| v.parse::<u64>().ok())
+}
+
+fn flag_value_path(flags: &[String], name: &str) -> Option<PathBuf> {
+    let idx = flags.iter().position(|f| f == name)?;
+    flags.get(idx + 1).map(PathBuf::from)
 }
 
 #[tokio::main]
@@ -148,10 +191,23 @@ async fn main() {
             limit,
             max_pages,
         } => commands::ingest_wallet(&cfg, *full, *limit, *max_pages).await,
+        Command::IngestActivity {
+            full,
+            limit,
+            max_pages,
+        } => commands::ingest_activity(&cfg, *full, *limit, *max_pages).await,
         Command::IngestMarkets { limit } => commands::ingest_markets(&cfg, *limit).await,
         Command::ClassifyMarkets { reset } => commands::classify_markets(&cfg, *reset),
         Command::ReconstructPositions => commands::reconstruct_positions(&cfg),
         Command::ReconcilePositions => commands::reconcile_positions(&cfg).await,
+        Command::IngestPositions => commands::ingest_positions(&cfg).await,
+        Command::DeriveFees { categories } => commands::derive_fees(
+            &cfg,
+            categories.as_deref().unwrap_or(std::path::Path::new(
+                "data/derived/event_fee_categories.json",
+            )),
+        ),
+        Command::DeriveParquet { dataset, out } => commands::derive_parquet(&cfg, dataset, out),
         Command::Report => commands::report(&cfg),
     };
 

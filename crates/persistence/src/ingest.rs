@@ -250,63 +250,11 @@ impl IngestRepository for Database {
     fn load_fills(&self, limit: Option<u64>) -> Result<Vec<SourceFill>> {
         let conn = self.inner_w();
         let sql = match limit {
-            Some(l) => format!(
-                "SELECT event_key, wallet, timestamp, condition_id, token_id, side,
-                        size, usdc_size, price, outcome_index, outcome,
-                        market_title, market_slug, event_slug, icon, raw_json
-                 FROM source_fills ORDER BY timestamp, event_key LIMIT {l}"
-            ),
-            None => String::from(
-                "SELECT event_key, wallet, timestamp, condition_id, token_id, side,
-                        size, usdc_size, price, outcome_index, outcome,
-                        market_title, market_slug, event_slug, icon, raw_json
-                 FROM source_fills ORDER BY timestamp, event_key",
-            ),
+            Some(l) => format!("{FILL_COLUMNS} ORDER BY timestamp, event_key LIMIT {l}"),
+            None => format!("{FILL_COLUMNS} ORDER BY timestamp, event_key"),
         };
         let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map([], |row| {
-            let size: String = row.get(6)?;
-            let usdc: String = row.get(7)?;
-            let price: String = row.get(8)?;
-            let side_s: String = row.get(5)?;
-            let outcome_index: i64 = row.get(9)?;
-            let event_key: String = row.get(0)?;
-            let wallet: String = row.get(1)?;
-            let timestamp: i64 = row.get(2)?;
-            let condition_id: String = row.get(3)?;
-            let token_id: String = row.get(4)?;
-            let outcome: String = row.get(10)?;
-            let market_title: String = row.get(11)?;
-            let market_slug: String = row.get(12)?;
-            let event_slug: String = row.get(13)?;
-            let icon: String = row.get(14)?;
-            let raw_json: String = row.get(15)?;
-            let side = side_for(&side_s).map_err(from_store)?;
-            let size = parse_dec(&size, "size").map_err(from_store)?;
-            let usdc_size = parse_dec(&usdc, "usdc_size").map_err(from_store)?;
-            let price = parse_dec(&price, "price").map_err(from_store)?;
-            Ok(SourceFill {
-                event_key,
-                wallet,
-                timestamp,
-                condition_id,
-                token_id,
-                side,
-                size,
-                usdc_size,
-                price,
-                // Exact per-share price is a pure derivation of the two
-                // persisted source Decimals — recomputed, not stored.
-                exec_price: usdc_size / size,
-                outcome_index,
-                outcome,
-                market_title,
-                market_slug,
-                event_slug,
-                icon,
-                raw_json,
-            })
-        })?;
+        let rows = stmt.query_map([], fill_from_row)?;
         let mut out = Vec::new();
         for row in rows {
             out.push(row?);
@@ -330,6 +278,42 @@ impl IngestRepository for Database {
         })
     }
 }
+
+/// Shared fill mapper reading by column name; used by `load_fills` and the
+/// fee-reconciliation JOIN query (both name every column explicitly).
+pub(crate) fn fill_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SourceFill> {
+    let side_s: String = r.get("side")?;
+    let side = side_for(&side_s).map_err(from_store)?;
+    let size = parse_dec(&r.get::<_, String>("size")?, "size").map_err(from_store)?;
+    let usdc_size =
+        parse_dec(&r.get::<_, String>("usdc_size")?, "usdc_size").map_err(from_store)?;
+    let price = parse_dec(&r.get::<_, String>("price")?, "price").map_err(from_store)?;
+    Ok(SourceFill {
+        event_key: r.get("event_key")?,
+        wallet: r.get("wallet")?,
+        timestamp: r.get("timestamp")?,
+        condition_id: r.get("condition_id")?,
+        token_id: r.get("token_id")?,
+        side,
+        size,
+        usdc_size,
+        price,
+        // Per-share cash amount recomputed from persisted Decimals —
+        // never stored, never fabricated (Phase-1.5: not the execution price).
+        cash_implied_price: usdc_size / size,
+        outcome_index: r.get("outcome_index")?,
+        outcome: r.get("outcome")?,
+        market_title: r.get("market_title")?,
+        market_slug: r.get("market_slug")?,
+        event_slug: r.get("event_slug")?,
+        icon: r.get("icon")?,
+        raw_json: r.get("raw_json")?,
+    })
+}
+
+const FILL_COLUMNS: &str = "SELECT event_key, wallet, timestamp, condition_id, token_id, side,
+    size, usdc_size, price, outcome_index, outcome,
+    market_title, market_slug, event_slug, icon, raw_json FROM source_fills";
 
 fn side_for(s: &str) -> Result<tokor_domain::activity::Side> {
     match s {

@@ -1,0 +1,24 @@
+[package]
+name = "tokor-recorder"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Phase 2 public market-data recorder: CLOB WS + REST book capture, normalization, shadow-execution support. Read-only; no keys, no orders."
+
+[dependencies]
+tokor-domain.workspace = true
+tokor-persistence.workspace = true
+tokio.workspace = true
+tokio-tungstenite.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+rand.workspace = true
+
+[dev-dependencies]

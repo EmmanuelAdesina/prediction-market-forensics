@@ -121,7 +121,10 @@ async fn rate_limit_backoff_and_final_success() {
         2,
     );
 
-    // Deterministic two-phase responder: 429 first, then success.
+    // Deterministic two-phase responder: 429 first, then success. The
+    // Retry-After hint of 1s dominates the full-jitter base backoff
+    // ([0, 400]ms at attempt 0), making the pause deterministic — the old
+    // hint=0 form asserted on a jitter roll and flaked ~25% of runs.
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     let counter = Arc::new(AtomicUsize::new(0));
@@ -130,7 +133,7 @@ async fn rate_limit_backoff_and_final_success() {
         let n = c2.fetch_add(1, Ordering::SeqCst);
         if n == 0 {
             ResponseTemplate::new(429)
-                .append_header("Retry-After", "0")
+                .append_header("Retry-After", "1")
                 .set_body_json(json!({"error":"rate"}))
         } else {
             ResponseTemplate::new(200).set_body_json(page.clone())
@@ -146,10 +149,10 @@ async fn rate_limit_backoff_and_final_success() {
     let ingestor = FullHistoryIngestor::new(&provider, &db);
     let t0 = std::time::Instant::now();
     let progress = ingestor.run(&f, "run-rl").await.unwrap();
-    // The base backoff is honored even when Retry-After asks for 0.
+    // The server hint is honored (delay = max(base jitter, 1000ms) = 1000ms).
     assert!(
-        t0.elapsed() > Duration::from_millis(300),
-        "expected a backoff pause"
+        t0.elapsed() > Duration::from_millis(900),
+        "expected the Retry-After pause to be honored"
     );
     assert_eq!(progress.fills_inserted, 1);
     assert!(progress.complete);

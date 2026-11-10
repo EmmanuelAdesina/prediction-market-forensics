@@ -7,6 +7,7 @@ use crate::activity::{
     SourceFill, SourceFillRaw,
 };
 use crate::error::parse_retry_after;
+use crate::fees::{classify_fill, FeeCategory};
 use crate::market::MarketRef;
 use crate::position::PositionBook;
 
@@ -82,23 +83,31 @@ fn display_price_floor_rows_are_accepted() {
     raw.usdc_size = 160.51425_f64; // exact price 0.158921... > displayed 0.15
     let fill = SourceFill::from_raw(&raw, "{}").expect("floor-displayed row must be accepted");
     assert_eq!(fill.price, dec!(0.15));
-    assert!(fill.exec_price > fill.price);
-    assert!(fill.exec_price < fill.price + dec!(0.01));
+    assert!(fill.cash_implied_price > fill.price);
+    assert!(fill.cash_implied_price < fill.price + dec!(0.01));
     // Cost basis carries the exact price, not the rounded display.
     assert_eq!(fill.usdc_size, dec!(160.51425));
 }
 
 #[test]
-fn fee_premium_rows_are_rejected() {
-    // The 82-row suspect family: usdc ≈ price*size × 1.0504..1.0567 on
-    // dip-ladder markets. Outside every verified interpretation → rejected
-    // while preserved raw upstream (fee-schedule verification is the blocker).
+fn fee_premium_rows_are_fee_explainable() {
+    // The former 82-row suspect family: usdc ≈ price*size × 1.0504.. on
+    // dip-ladder markets. Phase 1.5 verified these as taker sweeps under the
+    // published fee schedule (premium = rate×(1−p)); they now normalize, and
+    // the fee model pins the verdict — never force-fit, always category-exact.
     let mut raw = sample_raw();
     raw.price = 0.28_f64;
     raw.size = 4144.31_f64;
-    raw.usdc_size = 4144.31_f64 * 0.294_112_f64; // +5.0% premium
-    let err = SourceFill::from_raw(&raw, "{}").expect_err("fee-premium row must be rejected");
-    assert!(matches!(err, crate::error::IngestionError::Validation(_)));
+    raw.usdc_size = 4144.31_f64 * 0.294_112_f64; // +5.04% = 0.07 × (1−0.28)
+    let fill = SourceFill::from_raw(&raw, "{}").expect("fee-explainable row must normalize");
+    assert!(fill.cash_implied_price > fill.price);
+    let (verdict, face) =
+        classify_fill(fill.size, fill.price, fill.usdc_size, FeeCategory::Crypto).unwrap();
+    assert!(matches!(
+        verdict,
+        crate::fees::FillVerdict::VerifiedFeeInclusive
+    ));
+    assert!(matches!(face, crate::fees::FillFace::Taker));
 }
 
 #[test]
