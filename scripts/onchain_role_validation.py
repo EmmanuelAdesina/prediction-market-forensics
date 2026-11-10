@@ -334,7 +334,16 @@ def main():
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    cols = list(role_rows[0].keys()) if role_rows else []
+    # Union of keys across rows: role_rows[0] may be a RECEIPT_MISSING stub
+    # (2 keys) while OK rows carry the full per-fill schema. Writing from the
+    # first row's keys alone silently discards every per-fill column.
+    seen_cols: set = set()
+    cols: list = []
+    for r in role_rows:
+        for k in r.keys():
+            if k not in seen_cols:
+                seen_cols.add(k)
+                cols.append(k)
     table = pa.table({c: pa.array([r.get(c) for r in role_rows]) for c in cols})
     OUT_PARQUET.parent.mkdir(parents=True, exist_ok=True)
     pq.write_table(table, OUT_PARQUET)
