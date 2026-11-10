@@ -150,6 +150,32 @@ Exchange-time vs receive-time skew (e.g., `book.timestamp` vs our
 `received_ns`) is recorded but never used to claim absolute publication
 latency — clock alignment with the exchange is not assumed.
 
+### 3.1 First measurements (30-probe smoke run, 2026-11-10)
+
+`observe-source --probes 30` (read-only, raw provider, no retry wrapper):
+
+```
+poll → response      p50=318.8ms   p95=452.9ms   max=789.2ms
+response → book      p50=240.8ms   p95=343.0ms   max=408.5ms
+poll → decision-ready (end-to-end)
+                     p50=573.0ms   p95=721.3ms   max=1198.7ms
+```
+
+Reading rules, so nobody over-claims:
+
+* `response → book` includes one REST book round-trip for the fill's token
+  plus parse; the recorder's WS path removes this stage entirely (book is
+  already in memory when the decision gate runs).
+* **`poll_start − exchange_ts` is NOT latency.** In the smoke run it read
+  ~511 s p50 — that is simply the age of the newest fill on page 1 (the
+  wallet had not traded recently). The follower's real reaction cost to a
+  *fresh* fill = time since the last poll (0…poll-cycle) + poll→response +
+  response→book. Only fresh-fill observations bound that quantity; a
+  dedicated capture during active trading will measure it (§6.3).
+* 30 probes is a smoke sample, not a distribution — quoted only as the
+  first end-to-end sanity bound: **sub-second p50 from poll start to
+  decision-ready book.**
+
 ---
 
 ## 4. What the recorder does NOT do
@@ -181,8 +207,8 @@ latency — clock alignment with the exchange is not assumed.
 
 ## 6. Open items
 
-1. **CLI wiring** — `record-market` / `observe-source` commands in
-   `crates/application` (session module API is ready).
+1. ~~CLI wiring~~ — done (`record-market` / `observe-source` dispatched from
+   `main.rs`; flag values (`--probes N`, `--out PATH`) now parse correctly).
 2. **REST-hash reconciliation** — offline job comparing delta-chain hashes to
    periodic REST snapshot hashes; quantifies silent miss rate (feeds §6 of
    docs/09).

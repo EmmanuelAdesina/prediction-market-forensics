@@ -83,6 +83,14 @@ v2 side-flag agreement: 165/165
 Consistency with Phase 1.5: the feed-derived maker share (90.24% by count)
 matches the on-chain share (89.1% in this sample) within sampling noise.
 
+**Final corpus reference (feed side, 13,965 fills after the resume walk
+completed):** maker 12,596 (90.20% count / 59.25% volume / 62.08% notional);
+taker 1,368 (9.80% / 40.75% / 37.92%); one n/a fill. Fee derivation: 0
+unexplained, Σ 34,012.44 USDC charged. Activity stream: 13,973 events, all
+TRADE-type through this endpoint (redeem/merge lifecycle arrives via
+positions snapshot + on-chain data instead). The on-chain columns of this
+comparison fill in from the full-corpus walk (§6.1).
+
 ### 4.1 Fee ground truth — the §2 payoff
 
 The v2 event carries the contract's actual fee, charged **in USDC, to the

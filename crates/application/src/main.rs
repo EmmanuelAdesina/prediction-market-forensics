@@ -90,11 +90,11 @@ COMMANDS:
 }
 
 fn parse_args() -> Result<Cli, String> {
-    let mut args = std::env::args().skip(1);
+    let mut args = std::env::args().skip(1).peekable();
     let mut config_path = PathBuf::from("config/default.toml");
     let mut db_override = None;
     let mut positional = Vec::new();
-    let mut flags = Vec::new();
+    let mut flags: Vec<(String, Option<String>)> = Vec::new();
 
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -104,7 +104,13 @@ fn parse_args() -> Result<Cli, String> {
             "--db" => {
                 db_override = Some(PathBuf::from(args.next().ok_or("--db requires a value")?));
             }
-            s if s.starts_with("--") => flags.push(s.to_string()),
+            s if s.starts_with("--") => {
+                // Value flags (--limit N, --out PATH, --probes N) carry the
+                // next token unless it is itself a flag. Boolean flags take
+                // nothing.
+                let value = args.next_if(|a| !a.starts_with("--"));
+                flags.push((s.to_string(), value));
+            }
             _ => positional.push(a),
         }
     }
@@ -112,12 +118,12 @@ fn parse_args() -> Result<Cli, String> {
     let command = match positional.first().map(|s| s.as_str()) {
         Some("config-validate") => Command::ConfigValidate,
         Some("ingest-wallet") => Command::IngestWallet {
-            full: !flags.iter().any(|f| f == "--resume"),
+            full: !flags.iter().any(|(f, _)| f == "--resume"),
             limit: flag_value_u64(&flags, "--limit"),
             max_pages: flag_value_u64(&flags, "--max-pages"),
         },
         Some("ingest-activity") => Command::IngestActivity {
-            full: !flags.iter().any(|f| f == "--resume"),
+            full: !flags.iter().any(|(f, _)| f == "--resume"),
             limit: flag_value_u64(&flags, "--limit"),
             max_pages: flag_value_u64(&flags, "--max-pages"),
         },
@@ -125,7 +131,7 @@ fn parse_args() -> Result<Cli, String> {
             limit: flag_value_u64(&flags, "--limit"),
         },
         Some("classify-markets") => Command::ClassifyMarkets {
-            reset: flags.iter().any(|f| f == "--reset"),
+            reset: flags.iter().any(|(f, _)| f == "--reset"),
         },
         Some("reconstruct-positions") => Command::ReconstructPositions,
         Some("reconcile-positions") => Command::ReconcilePositions,
@@ -163,14 +169,14 @@ fn parse_args() -> Result<Cli, String> {
     })
 }
 
-fn flag_value_u64(flags: &[String], name: &str) -> Option<u64> {
-    let idx = flags.iter().position(|f| f == name)?;
-    flags.get(idx + 1).and_then(|v| v.parse::<u64>().ok())
+fn flag_value_u64(flags: &[(String, Option<String>)], name: &str) -> Option<u64> {
+    let idx = flags.iter().position(|(f, _)| f == name)?;
+    flags[idx].1.as_deref().and_then(|v| v.parse::<u64>().ok())
 }
 
-fn flag_value_path(flags: &[String], name: &str) -> Option<PathBuf> {
-    let idx = flags.iter().position(|f| f == name)?;
-    flags.get(idx + 1).map(PathBuf::from)
+fn flag_value_path(flags: &[(String, Option<String>)], name: &str) -> Option<PathBuf> {
+    let idx = flags.iter().position(|(f, _)| f == name)?;
+    flags[idx].1.as_deref().map(PathBuf::from)
 }
 
 #[tokio::main]

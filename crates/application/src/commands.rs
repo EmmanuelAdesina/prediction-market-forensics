@@ -549,9 +549,10 @@ pub async fn ingest_positions(cfg: &AppConfig) -> CmdResult<String> {
     )
     .map_err(|e| format!("start run: {e}"))?;
     let mut all_rows: Vec<PositionSnapshotRow> = Vec::new();
-    let mut pages_total = 0u64;
+    // Page index continues ACROSS statuses: all three walks share one run_id,
+    // and raw_api_pages uniqueness is (run_id, page_index).
+    let mut page_index = 0u64;
     for status in ["OPEN", "CLOSED", "REDEEMABLE"] {
-        let mut page_index = 0u64;
         let result = walk_positions_status(
             &fetcher,
             &cfg.wallet_address,
@@ -591,7 +592,6 @@ pub async fn ingest_positions(cfg: &AppConfig) -> CmdResult<String> {
             .into_iter()
             .flatten()
             .collect();
-        pages_total += page_index;
         for r in rows {
             let dec_s = |k: &str| {
                 r.get(k).map(|v| match v {
@@ -637,6 +637,30 @@ pub async fn ingest_positions(cfg: &AppConfig) -> CmdResult<String> {
         }
     }
 
+    // The Data API can return the SAME token under two statuses (observed:
+    // one token as both OPEN and CLOSED; status=OPEN pages embedding
+    // REDEEMABLE rows). positions_snapshot is keyed UNIQUE(token_id) — a
+    // point-in-time "current state per token" — so dedupe with status
+    // priority REDEEMABLE > OPEN > CLOSED (most actionable state wins).
+    let mut by_token: std::collections::HashMap<String, PositionSnapshotRow> =
+        std::collections::HashMap::new();
+    let prio = |s: &str| match s {
+        "REDEEMABLE" => 0,
+        "OPEN" => 1,
+        _ => 2,
+    };
+    for row in &all_rows {
+        let keep = !matches!(
+            by_token.get(&row.token_id),
+            Some(existing) if prio(&existing.status) <= prio(&row.status)
+        );
+        if keep {
+            by_token.insert(row.token_id.clone(), row.clone());
+        }
+    }
+    let n_raw = all_rows.len();
+    let mut all_rows: Vec<PositionSnapshotRow> = by_token.into_values().collect();
+    all_rows.sort_by(|a, b| a.token_id.cmp(&b.token_id));
     let n = all_rows.len();
     tokor_persistence::activity::ActivityRepository::store_positions_snapshot(
         &database, &run_id, &all_rows,
@@ -652,7 +676,8 @@ pub async fn ingest_positions(cfg: &AppConfig) -> CmdResult<String> {
         format!("{m:?}")
     };
     Ok(format!(
-        "snapshot {run_id}: pages={pages_total}, legs={n} by status {by_status}"
+        "snapshot {run_id}: pages={page_index}, legs={n} (from {n_raw} api rows; \
+         cross-status duplicates resolved REDEEMABLE>OPEN>CLOSED) by status {by_status}"
     ))
 }
 
@@ -1440,6 +1465,8 @@ pub async fn observe_source(cfg: &AppConfig, probes: u64) -> CmdResult<String> {
     let mut book_ms = Vec::new();
     let mut decision_ms = Vec::new();
     let mut recorded = 0u64;
+    // One run id per invocation: rows of a probe session group together.
+    let run_id = format!("observe-{}", now_ns());
 
     for probe in 0..probes {
         let poll_start_ns = now_ns();
@@ -1498,7 +1525,7 @@ pub async fn observe_source(cfg: &AppConfig, probes: u64) -> CmdResult<String> {
                 decision_ready_ns: book_ok.then_some(decision_ready_ns),
                 book_ts_ns: Some(book_ts_ns),
                 page_url: url,
-                run_id: format!("observe-{}", now_ns()),
+                run_id: run_id.clone(),
             })
             .map_err(|e| format!("observation write: {e}"))?;
         recorded += 1;

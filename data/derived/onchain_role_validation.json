@@ -9,17 +9,17 @@
     "0xc5d563a36ae78145c45a50134d48a1215220f80a": "neg_risk_exchange_v1",
     "0xe111180000d2663c0091e4f400237545b87b996b": "exchange_v2"
   },
-  "txs_fetched": 200,
-  "events_total": 752,
-  "wallet_fills_classified": 165,
+  "txs_fetched": 13331,
+  "events_total": 28470,
+  "wallet_fills_classified": 6485,
   "role_counts": {
-    "CONFIRMED_MAKER": 147,
-    "CONFIRMED_TAKER": 18,
-    "ROLE_UNKNOWN": 0
+    "CONFIRMED_MAKER": 5604,
+    "CONFIRMED_TAKER": 842,
+    "ROLE_UNKNOWN": 39
   },
-  "side_flag_ok": 165,
+  "side_flag_ok": 6446,
   "side_flag_bad": 0,
-  "elapsed_min": 1.1,
+  "elapsed_min": 95.65,
   "fee_checks_sample": [
     {
       "tx": "0x00193d0af6aa4e0ac7d1809173e94ab3959bb05195cc0a3d20921d6cc0751ddb",
