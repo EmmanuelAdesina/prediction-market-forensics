@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use rust_decimal_macros::dec;
 
-use crate::book::{ApplyOutcome, BookEngine, BookQuality, GapReason};
+use crate::book::{ApplyOutcome, BookEngine, BookQuality, BookState, GapReason, Level};
 use crate::messages::{parse_market_message, subscribe_body};
 
 const TOKEN: &str = "847681450197861234";
@@ -225,4 +225,31 @@ fn subscribe_body_uses_assets_ids() {
     assert!(v.get("assets_ids").is_some(), "protocol spelling");
     assert!(v.get("asset_ids").is_none());
     assert_eq!(v["type"], "market");
+}
+
+/// Persisted states rehydrate losslessly (shadow-run reads these).
+#[test]
+fn book_state_json_roundtrip() {
+    use rust_decimal_macros::dec;
+    let st = BookState {
+        bids: vec![Level {
+            price: dec!(0.50),
+            size: dec!(100.5),
+        }],
+        asks: vec![Level {
+            price: dec!(0.55),
+            size: dec!(200),
+        }],
+        hash: Some("abc".into()),
+        exchange_ts: None,
+        quality: BookQuality::Snapshot,
+        updated_ns: 42,
+    };
+    let (bids, asks) = st.to_json();
+    let back = BookState::from_json(&bids, &asks, BookQuality::Snapshot, 42).unwrap();
+    assert_eq!(back.bids, st.bids);
+    assert_eq!(back.asks, st.asks);
+    // Garbage JSON is None (no usable book), never an empty book.
+    assert!(BookState::from_json("[]", "not json", BookQuality::Snapshot, 0).is_none());
+    assert!(BookState::from_json("not json", "[]", BookQuality::Snapshot, 0).is_none());
 }

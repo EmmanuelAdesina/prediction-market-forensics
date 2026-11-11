@@ -80,6 +80,39 @@ impl BookState {
         };
         (ser(&self.bids), ser(&self.asks))
     }
+
+    /// Rehydrate a state from persisted `to_json` strings. Returns None if
+    /// either side is not the expected `[["price","size"], ...]` shape —
+    /// callers treat that as no usable book (DATA_INSUFFICIENT), never as
+    /// an empty book.
+    pub fn from_json(
+        bids_json: &str,
+        asks_json: &str,
+        quality: BookQuality,
+        updated_ns: i64,
+    ) -> Option<BookState> {
+        let parse = |s: &str| -> Option<Vec<Level>> {
+            let raw: Vec<Vec<String>> = serde_json::from_str(s).ok()?;
+            raw.into_iter()
+                .map(|pair| {
+                    let mut it = pair.into_iter();
+                    let price = it.next()?.parse::<Decimal>().ok()?;
+                    let size = it.next()?.parse::<Decimal>().ok()?;
+                    Some(Level { price, size })
+                })
+                .collect()
+        };
+        let bids = parse(bids_json)?;
+        let asks = parse(asks_json)?;
+        Some(BookState {
+            bids,
+            asks,
+            hash: None,
+            exchange_ts: None,
+            quality,
+            updated_ns,
+        })
+    }
 }
 
 /// Why an update could not be normalized.

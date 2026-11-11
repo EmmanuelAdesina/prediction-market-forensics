@@ -2334,6 +2334,7 @@ dependencies = [
  "tokor-market-data",
  "tokor-persistence",
  "tokor-recorder",
+ "tokor-shadow-exec",
  "tokor-wallet-feed",
  "toml",
  "tracing",

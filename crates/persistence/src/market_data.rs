@@ -77,6 +77,20 @@ pub struct TradeEventRow {
     pub session_id: String,
 }
 
+/// One simulation signal: a stored fill joined with its verified fee rate
+/// (NULL fee_rate = category gate must reject in the intelligent policy).
+#[derive(Debug, Clone)]
+pub struct SimSignalRow {
+    pub event_key: String,
+    pub token_id: String,
+    pub side: String,
+    /// Displayed execution price (docs/05: basis uses the displayed price
+    /// plus fee only when the copier is a taker).
+    pub price: String,
+    pub size: String,
+    pub fee_rate: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct HealthRow {
     pub session_id: String,
@@ -153,6 +167,10 @@ pub trait MarketDataRepository {
     fn market_data_counts(&self) -> Result<(u64, u64, u64, u64)>;
     fn load_book_states(&self, token_id: &str, limit: u64) -> Result<Vec<BookStateRow>>;
     fn load_trades(&self, token_id: &str, limit: u64) -> Result<Vec<TradeEventRow>>;
+    /// Signals for the shadow-run command: fills joined with their verified
+    /// fee rate (NULL when the category has no verified model — the
+    /// intelligent policy's category gate rejects those).
+    fn load_sim_signals(&self, limit: u64) -> Result<Vec<SimSignalRow>>;
 }
 
 fn insert_delta(s: &Connection, r: &DeltaRow) -> rusqlite::Result<()> {
@@ -433,6 +451,30 @@ impl MarketDataRepository for crate::Database {
         )?;
         tx.commit()?;
         Ok(n as u64)
+    }
+
+    fn load_sim_signals(&self, limit: u64) -> Result<Vec<SimSignalRow>> {
+        let conn = self.inner_w();
+        let mut stmt = conn.prepare(
+            "SELECT f.event_key, f.token_id, f.side, f.price, f.size, fr.fee_rate
+             FROM source_fills f
+             LEFT JOIN fee_reconciliation fr ON fr.event_key = f.event_key
+             ORDER BY f.timestamp
+             LIMIT ?1",
+        )?;
+        let rows = stmt
+            .query_map([limit as i64], |r| {
+                Ok(SimSignalRow {
+                    event_key: r.get(0)?,
+                    token_id: r.get(1)?,
+                    side: r.get(2)?,
+                    price: r.get(3)?,
+                    size: r.get(4)?,
+                    fee_rate: r.get(5)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     fn market_data_counts(&self) -> Result<(u64, u64, u64, u64)> {

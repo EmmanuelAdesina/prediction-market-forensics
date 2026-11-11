@@ -18,10 +18,16 @@ use tokor_shadow_exec::queue::estimate_queue;
 fn book(levels: usize) -> tokor_recorder::book::BookState {
     tokor_recorder::book::BookState {
         bids: (0..levels)
-            .map(|i| Level { price: dec!(0.50) - Decimal::from(i), size: dec!(100) + Decimal::from(i) })
+            .map(|i| Level {
+                price: dec!(0.50) - Decimal::from(i),
+                size: dec!(100) + Decimal::from(i),
+            })
             .collect(),
         asks: (0..levels)
-            .map(|i| Level { price: dec!(0.55) + Decimal::from(i), size: dec!(100) + Decimal::from(i) })
+            .map(|i| Level {
+                price: dec!(0.55) + Decimal::from(i),
+                size: dec!(100) + Decimal::from(i),
+            })
             .collect(),
         hash: None,
         exchange_ts: None,
@@ -33,7 +39,14 @@ fn book(levels: usize) -> tokor_recorder::book::BookState {
 fn bench_queue(c: &mut Criterion) {
     let b = book(50);
     c.bench_function("queue/estimate_50_levels", |g| {
-        g.iter(|| estimate_queue(black_box(&b), black_box(dec!(0.48)), black_box(Side::Buy), black_box(dec!(120))))
+        g.iter(|| {
+            estimate_queue(
+                black_box(&b),
+                black_box(dec!(0.48)),
+                black_box(Side::Buy),
+                black_box(dec!(120)),
+            )
+        })
     });
 }
 
@@ -69,9 +82,19 @@ fn bench_copy(c: &mut Criterion) {
         observed_trade_size: dec!(100),
         book: Some(b),
     };
-    let budget = BudgetState { cash: dec!(49), gross_exposure: Decimal::ZERO, cap: dec!(49) };
+    let budget = BudgetState {
+        cash: dec!(49),
+        gross_exposure: Decimal::ZERO,
+        cap: dec!(49),
+    };
     c.bench_function("copy_sim/exact", |g| {
-        g.iter(|| exact_copy(black_box(&sig), black_box(&budget), black_box(&PolicyConfig::default())))
+        g.iter(|| {
+            exact_copy(
+                black_box(&sig),
+                black_box(&budget),
+                black_box(&PolicyConfig::default()),
+            )
+        })
     });
 }
 
@@ -96,7 +119,13 @@ fn bench_portfolio(c: &mut Criterion) {
 
 fn bench_markouts(c: &mut Criterion) {
     let prints: Vec<Print> = (0..10_000)
-        .map(|i| (i * 100_000_000, dec!(0.50) + Decimal::from(i % 5) * dec!(0.01), dec!(10)))
+        .map(|i| {
+            (
+                i * 100_000_000,
+                dec!(0.50) + Decimal::from(i % 5) * dec!(0.01),
+                dec!(10),
+            )
+        })
         .collect();
     c.bench_function("markouts/10k_prints", |g| {
         g.iter(|| markouts(black_box(0), black_box(dec!(0.50)), black_box(&prints)))

@@ -6,7 +6,7 @@ use rust_decimal::Decimal;
 use tokor_domain::activity::Side;
 
 /// What a simulator decides to do with one signal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Decision {
     /// Join Tokor's price level passively (subject to fill-credit rules).
     CopyPassive,

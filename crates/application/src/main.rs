@@ -54,6 +54,10 @@ enum Command {
     ObserveSource {
         probes: u64,
     },
+    ShadowRun {
+        limit: Option<u64>,
+        scenario: Option<String>,
+    },
     Report,
 }
 
@@ -85,6 +89,11 @@ COMMANDS:
   observe-source [--probes N]            Independent latency probe of the
                                          wallet-feed → decision chain (Phase 2
                                          §4; default 30 probes).
+  shadow-run [--limit N] [--scenario optimistic|baseline|conservative]
+                                         Replay stored fills through the
+                                         shadow-exec simulators over recorded
+                                         market data (Phase 2 §5; baseline
+                                         default; submitted ≠ executed).
   report                                 Print a data-foundation status report."
         .to_string()
 }
@@ -157,6 +166,10 @@ fn parse_args() -> Result<Cli, String> {
         Some("observe-source") => Command::ObserveSource {
             probes: flag_value_u64(&flags, "--probes").unwrap_or(30),
         },
+        Some("shadow-run") => Command::ShadowRun {
+            limit: flag_value_u64(&flags, "--limit"),
+            scenario: flag_value(&flags, "--scenario"),
+        },
         Some("report") => Command::Report,
         Some(other) => return Err(format!("unknown command {other:?}\n{}", usage())),
         None => return Err(usage()),
@@ -177,6 +190,11 @@ fn flag_value_u64(flags: &[(String, Option<String>)], name: &str) -> Option<u64>
 fn flag_value_path(flags: &[(String, Option<String>)], name: &str) -> Option<PathBuf> {
     let idx = flags.iter().position(|(f, _)| f == name)?;
     flags[idx].1.as_deref().map(PathBuf::from)
+}
+
+fn flag_value(flags: &[(String, Option<String>)], name: &str) -> Option<String> {
+    let idx = flags.iter().position(|(f, _)| f == name)?;
+    flags[idx].1.clone()
 }
 
 #[tokio::main]
@@ -240,6 +258,11 @@ async fn main() {
         Command::Report => commands::report(&cfg),
         Command::RecordMarket { tokens } => commands::record_market(&cfg, tokens).await,
         Command::ObserveSource { probes } => commands::observe_source(&cfg, *probes).await,
+        Command::ShadowRun { limit, scenario } => commands::shadow_run(
+            &cfg,
+            limit.unwrap_or(1_000),
+            scenario.as_deref().unwrap_or("baseline"),
+        ),
     };
 
     match outcome {

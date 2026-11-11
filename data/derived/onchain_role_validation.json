@@ -9,18 +9,42 @@
     "0xc5d563a36ae78145c45a50134d48a1215220f80a": "neg_risk_exchange_v1",
     "0xe111180000d2663c0091e4f400237545b87b996b": "exchange_v2"
   },
-  "txs_fetched": 13331,
-  "events_total": 28470,
-  "wallet_fills_classified": 6485,
+  "txs_fetched": 13334,
+  "events_total": 43311,
+  "wallet_fills_classified": 9804,
   "role_counts": {
-    "CONFIRMED_MAKER": 5604,
-    "CONFIRMED_TAKER": 842,
-    "ROLE_UNKNOWN": 39
+    "CONFIRMED_MAKER": 8493,
+    "CONFIRMED_TAKER": 1245,
+    "ROLE_UNKNOWN": 66
   },
-  "side_flag_ok": 6446,
+  "side_flag_ok": 9738,
   "side_flag_bad": 0,
-  "elapsed_min": 95.65,
+  "elapsed_min": 1452.36,
   "fee_checks_sample": [
+    {
+      "tx": "0x0009b5478582928216575d9fbeb889367331b051a27ab7020f5e306bb561cf7f",
+      "contract": "exchange_v2",
+      "feed_side": "BUY",
+      "feed_price": "0.8200000144",
+      "feed_size": "11.111112",
+      "onchain_fee_raw": 0
+    },
+    {
+      "tx": "0x001768d0a2f2437b6699a2c1926e4e2ce71e3745916967ec546c34c180d30db1",
+      "contract": "exchange_v2",
+      "feed_side": "BUY",
+      "feed_price": "0.756",
+      "feed_size": "510",
+      "onchain_fee_raw": 0
+    },
+    {
+      "tx": "0x00190a0d97c4c30ea44ee67410663e2a346a8dd4857483d6fd00c7767f9c0587",
+      "contract": "exchange_v2",
+      "feed_side": "BUY",
+      "feed_price": "0.5",
+      "feed_size": "87",
+      "onchain_fee_raw": 0
+    },
     {
       "tx": "0x00193d0af6aa4e0ac7d1809173e94ab3959bb05195cc0a3d20921d6cc0751ddb",
       "contract": "exchange_v2",
@@ -35,6 +59,14 @@
       "feed_side": "BUY",
       "feed_price": "0.19",
       "feed_size": "20",
+      "onchain_fee_raw": 0
+    },
+    {
+      "tx": "0x0020855e15cf4c37baa4bdb362f9739ed7f6a8e0b7dd79f6f7fd3d7ebb492383",
+      "contract": "exchange_v2",
+      "feed_side": "BUY",
+      "feed_price": "0.834",
+      "feed_size": "320",
       "onchain_fee_raw": 0
     },
     {
@@ -67,6 +99,14 @@
       "feed_side": "BUY",
       "feed_price": "0.11",
       "feed_size": "61",
+      "onchain_fee_raw": 0
+    },
+    {
+      "tx": "0x0039911446d42d43e0317660b0d2dd9677d1799d79ffc05dd6e381383a8c8a43",
+      "contract": "exchange_v2",
+      "feed_side": "BUY",
+      "feed_price": "0.09",
+      "feed_size": "1.96",
       "onchain_fee_raw": 0
     },
     {
@@ -140,46 +180,6 @@
       "feed_price": "0.24",
       "feed_size": "15",
       "onchain_fee_raw": 0
-    },
-    {
-      "tx": "0x00808fe8753b5155cb03077f11a695857a2ef0e7756fae6eef012f1b218b95d2",
-      "contract": "exchange_v2",
-      "feed_side": "BUY",
-      "feed_price": "0.059",
-      "feed_size": "761.08",
-      "onchain_fee_raw": 0
-    },
-    {
-      "tx": "0x008c7fc90562b29508492b8f0427bb7aea782f2574cf1f40feae5dbd7211d5be",
-      "contract": "exchange_v2",
-      "feed_side": "BUY",
-      "feed_price": "0.9220000048",
-      "feed_size": "189.102563",
-      "onchain_fee_raw": 0
-    },
-    {
-      "tx": "0x0091953924f9e8d4bfc3e067bf06c229267d015fa383d4f6d333c97ceb0742cd",
-      "contract": "exchange_v2",
-      "feed_side": "BUY",
-      "feed_price": "0.61",
-      "feed_size": "760",
-      "onchain_fee_raw": 0
-    },
-    {
-      "tx": "0x0091953924f9e8d4bfc3e067bf06c229267d015fa383d4f6d333c97ceb0742cd",
-      "contract": "exchange_v2",
-      "feed_side": "BUY",
-      "feed_price": "0.62",
-      "feed_size": "765",
-      "onchain_fee_raw": 0
-    },
-    {
-      "tx": "0x009c5e59faac19f429a36c99c8ff92d64e3a1de9e9ba190871229dba218f139a",
-      "contract": "exchange_v2",
-      "feed_side": "BUY",
-      "feed_price": "0.994",
-      "feed_size": "5144",
-      "onchain_fee_raw": 2147510
     }
   ]
 }

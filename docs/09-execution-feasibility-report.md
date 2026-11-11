@@ -52,6 +52,17 @@ Tokor *did*; Phase 2 measures what a late, small, queue-blind follower
    (price-time priority, size accounting, level-integrity cancel,
    staleness freeze). `submitted ≠ executed` reported side by side.
 
+   **First quantitative result — the static cost asymmetry (provable
+   today, no capture needed):** mirroring Tokor's 12,596 maker fills
+   ($2,461,663 notional) as a *taker* costs **$50,769.77 in fees alone**
+   (2.062% of notional; $47,393.79 of it in the 7% crypto markets, 11,191
+   fills) — fees Tokor provably never paid (docs/06 §4.1: maker events
+   carry fee = 0 on-chain). Add the bid–ask spread and the queue, both
+   still unmeasured, on top. Tokor's edge is structurally fee-free; a
+   late copier's is structurally fee-burdened. The remaining question is
+   only whether signal quality (markout edge) exceeds 2.062% + spread —
+   the markout study answers that.
+
 7. **Does intelligent copying beat exact copying net of costs?**
    Pending — intelligent-copy simulator (docs/08 §6): fee-aware price
    improvement, category gate, $49 exposure cap. Net EV = markout − fees −
@@ -67,20 +78,62 @@ Tokor *did*; Phase 2 measures what a late, small, queue-blind follower
    Quoted as Optimistic/Baseline/Conservative, never a single number.
 
 10. **Is every conclusion reproducible from committed code + data?**
-    Engine gates green (fmt, clippy `-D warnings`, 80 tests). Reproduction
+    Engine gates green (fmt, clippy `-D warnings`, 105 tests). Reproduction
     chain: `ingest-activity` → `ingest-positions` → `derive-fees` →
     `derive-parquet` → `onchain_role_validation.py` → `record-market` →
-    simulators (CLI pending). All raw evidence retained (receipts, raw
-    frames). Datasets: `liquidity_role_validation.parquet` (full corpus
-    pending), `fills_fees.parquet`, `activity_events.parquet`,
-    `inventory_reconciliation.parquet` (pending positions re-run after
-    snapshot fix).
+    `shadow-run` (CLI wired: replays stored fills through the simulators
+    over recorded books/trades; every decision persisted to
+    `execution_simulations`). Benchmarks: criterion suite in
+    `crates/shadow-exec/benches` — all hot paths microsecond-class
+    (queue 308 ns / 50 levels; credit replay 6.5 µs / 1k prints;
+    markouts 402 µs / 10k prints), so a full-corpus replay is seconds.
+    Datasets: `liquidity_role_validation.parquet` (pass 2 in flight),
+    `fills_fees.parquet` (13,965 rows), `activity_events.parquet`
+    (13,973 rows), `inventory_reconciliation.parquet` (2,843 legs).
 
 ## Non-goals honored
 
 No private keys, no authentication, no signed orders, no submissions —
 enforced by the dependency graph (no CLOB order routes exist in any crate)
 and by the simulators being pure functions over recorded data.
+
+## Reproduction appendix (exact commands)
+
+All read-only; run from the repo root with the operator env loaded.
+
+```bash
+# Data foundation (Phase 1.5 state → datasets)
+$BIN --config config/default.toml ingest-activity --resume
+$BIN --config config/default.toml ingest-positions
+$BIN --config config/default.toml derive-fees
+$BIN --config config/default.toml derive-parquet fees      --out data/derived/fills_fees.parquet
+$BIN --config config/default.toml derive-parquet activity  --out data/derived/activity_events.parquet
+$BIN --config config/default.toml derive-parquet inventory --out data/derived/inventory_reconciliation.parquet
+
+# On-chain role + fee validation (§2; idempotent, receipts cached per tx)
+python3 scripts/onchain_role_validation.py            # full corpus
+python3 scripts/onchain_role_validation.py --sample 200
+
+# Market-data capture (§3) — runs until ctrl-c
+$BIN --config config/default.toml record-market <TOKEN_ID>...
+
+# Latency probes (§4)
+$BIN --config config/default.toml observe-source --probes 30
+
+# Shadow replay (§5) — over whatever capture exists
+$BIN --config config/default.toml shadow-run --limit 1000 --scenario baseline
+$BIN --config config/default.toml shadow-run --limit 1000 --scenario optimistic
+$BIN --config config/default.toml shadow-run --limit 1000 --scenario conservative
+
+# Gates + benchmarks
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo bench -p tokor-shadow-exec --bench shadow_bench
+```
+
+Every simulated decision is persisted (`execution_simulations`) with its
+decision, submitted vs executed quantity, and a `decision_json` blob citing
+the policy reason — the audit trail for questions 6–9.
 
 ## Open items carried into the verdict
 

@@ -1562,3 +1562,270 @@ fn percentile(sorted: &[f64], q: f64) -> f64 {
     let idx = ((q * (sorted.len() as f64 - 1.0)).ceil()) as usize;
     sorted[idx.min(sorted.len() - 1)]
 }
+
+// ------------------------------------------------- shadow-run (Phase 2 §5)
+
+/// Phase 2 §5: replay stored fills through the shadow-exec simulators over
+/// the RECORDED market data (books + public trades). With no capture yet,
+/// every signal is `DataInsufficient` — the command validates the §5→§9
+/// pipeline end-to-end and becomes the production path once `record-market`
+/// has accumulated coverage.
+pub fn shadow_run(cfg: &AppConfig, limit: u64, scenario: &str) -> CmdResult<String> {
+    use rust_decimal::Decimal;
+    use tokor_domain::activity::Side;
+    use tokor_persistence::market_data::MarketDataRepository as _;
+    use tokor_recorder::book::BookQuality;
+    use tokor_shadow_exec::copy_sim::{exact_copy, intelligent_copy, BudgetState, PolicyConfig};
+    use tokor_shadow_exec::decision::Decision;
+    use tokor_shadow_exec::fill_credit::{credit_fills, EvidenceEvent, PassiveOrder};
+    use tokor_shadow_exec::portfolio::{PortfolioSim, SimFill};
+    use tokor_shadow_exec::queue::QueueScenario;
+
+    let scenario = match scenario.to_ascii_lowercase().as_str() {
+        "optimistic" => QueueScenario::Optimistic,
+        "conservative" => QueueScenario::Conservative,
+        _ => QueueScenario::Baseline,
+    };
+    let policy_cfg = PolicyConfig {
+        scenario,
+        ..PolicyConfig::default()
+    };
+    let database = db(cfg)?;
+
+    let signals = database
+        .load_sim_signals(limit)
+        .map_err(|e| format!("load signals: {e}"))?;
+
+    let mut portfolio = PortfolioSim::default();
+    // Per-policy tallies: decision → count, plus submitted/executed sums.
+    let tally = |p: &str,
+                 d: Decision,
+                 submitted: Decimal,
+                 executed: Decimal,
+                 acc: &mut std::collections::BTreeMap<
+        (String, Decision),
+        (u64, Decimal, Decimal),
+    >| {
+        let e = acc
+            .entry((p.to_string(), d))
+            .or_insert((0, Decimal::ZERO, Decimal::ZERO));
+        e.0 += 1;
+        e.1 += submitted;
+        e.2 += executed;
+    };
+    let mut decisions: std::collections::BTreeMap<(String, Decision), (u64, Decimal, Decimal)> =
+        std::collections::BTreeMap::new();
+    let mut refusals = 0u64;
+    let mut sims_recorded = 0u64;
+
+    for sig in &signals {
+        // Decision-ready book: the latest recorded state for the token.
+        // Quality != Snapshot/DeltaConsistent is not decision-ready.
+        let book = database
+            .load_book_states(&sig.token_id, 1)
+            .map_err(|e| format!("load book: {e}"))?
+            .into_iter()
+            .find_map(|row| {
+                let q = match row.quality.as_str() {
+                    "Snapshot" => Some(BookQuality::Snapshot),
+                    "DeltaConsistent" => Some(BookQuality::DeltaConsistent),
+                    _ => None, // ReconciledAfterGap + unknowns: refuse
+                }?;
+                tokor_recorder::book::BookState::from_json(
+                    &row.bids_json,
+                    &row.asks_json,
+                    q,
+                    row.first_seen_ns,
+                )
+            });
+        let book = match book {
+            Some(b) => b,
+            None => {
+                let now = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+                for (policy, d) in [
+                    ("exact", Decision::DataInsufficient),
+                    ("intelligent", Decision::DataInsufficient),
+                ] {
+                    tally(policy, d, Decimal::ZERO, Decimal::ZERO, &mut decisions);
+                    database
+                        .record_simulation(&tokor_persistence::market_data::SimulationRow {
+                            strategy: policy.to_string(),
+                            strategy_version: "1".into(),
+                            scenario: format!("{scenario:?}"),
+                            source_event_key: sig.event_key.clone(),
+                            token_id: sig.token_id.clone(),
+                            decision: format!("{d:?}"),
+                            decision_json: serde_json::json!({
+                                "reason": "no decision-ready book for token",
+                            })
+                            .to_string(),
+                            decided_at_ns: now,
+                            submitted_qty: Some("0".into()),
+                            limit_price: None,
+                            queue_ahead: None,
+                            filled_qty: "0".into(),
+                            avg_fill_price: None,
+                            fees: "0".into(),
+                            book_state_id: None,
+                        })
+                        .map_err(|e| format!("record simulation: {e}"))?;
+                    sims_recorded += 1;
+                }
+                continue;
+            }
+        };
+
+        let fee_rate = sig
+            .fee_rate
+            .as_deref()
+            .and_then(|s| s.parse::<Decimal>().ok());
+        let signal = tokor_shadow_exec::copy_sim::Signal {
+            side: if sig.side.eq_ignore_ascii_case("BUY") {
+                Side::Buy
+            } else {
+                Side::Sell
+            },
+            price: sig
+                .price
+                .parse::<Decimal>()
+                .map_err(|e| format!("price {}: {e}", sig.price))?,
+            size: sig
+                .size
+                .parse::<Decimal>()
+                .map_err(|e| format!("size {}: {e}", sig.size))?,
+            fee_rate,
+            tick: Decimal::new(1, 2), // 0.01 (docs/08 §9.1: per-market lattice pending)
+            observed_trade_size: signal_size_placeholder(),
+            book: Some(book),
+        };
+        let budget = BudgetState {
+            cash: portfolio.cash,
+            gross_exposure: portfolio.gross_exposure(),
+            cap: portfolio.cap,
+        };
+
+        for (policy, sub) in [
+            ("exact", exact_copy(&signal, &budget, &policy_cfg)),
+            (
+                "intelligent",
+                intelligent_copy(&signal, &budget, &policy_cfg),
+            ),
+        ] {
+            let mut executed = Decimal::ZERO;
+            if sub.submits() {
+                // Evidence: recorded public prints for the token (received
+                // order). Gap/Resync markers between states are a future
+                // refinement (docs/08 §4 rule 4 via stored state quality).
+                let trades = database
+                    .load_trades(&sig.token_id, 1_000)
+                    .map_err(|e| format!("load trades: {e}"))?;
+                let events: Vec<EvidenceEvent> = trades
+                    .iter()
+                    .filter_map(|t| {
+                        Some(EvidenceEvent::Trade {
+                            ts_ns: t.received_ns,
+                            price: t.price.parse::<Decimal>().ok()?,
+                            size: t.size.parse::<Decimal>().ok()?,
+                            aggressor_side: match t.side.as_deref() {
+                                Some("SELL") => Side::Sell,
+                                _ => Side::Buy,
+                            },
+                        })
+                    })
+                    .collect();
+                let order = PassiveOrder {
+                    side: signal.side,
+                    price: sub.price,
+                    submitted_ns: 0,
+                    remaining_qty: sub.submitted_qty,
+                    queue_ahead: Decimal::ZERO, // scenario queue enters via docs/09 report
+                };
+                let out = credit_fills(&order, &events);
+                executed = out.executed_qty;
+                if executed > Decimal::ZERO {
+                    // Passive fills pay zero fee (on-chain fact, docs/06 §4.1);
+                    // marketable fills pay the verified taker fee.
+                    let fee = if sub.marketable {
+                        tokor_domain::fees::charged_fee(
+                            executed,
+                            sub.price,
+                            signal.fee_rate.unwrap_or(Decimal::ZERO),
+                        )
+                    } else {
+                        Decimal::ZERO
+                    };
+                    let fill = SimFill {
+                        token_id: sig.token_id.clone(),
+                        side: signal.side,
+                        price: sub.price,
+                        qty: executed,
+                        fee,
+                    };
+                    if portfolio.apply(&fill).is_err() {
+                        refusals += 1;
+                    }
+                }
+            }
+            database
+                .record_simulation(&tokor_persistence::market_data::SimulationRow {
+                    strategy: policy.to_string(),
+                    strategy_version: "1".into(),
+                    scenario: format!("{scenario:?}"),
+                    source_event_key: sig.event_key.clone(),
+                    token_id: sig.token_id.clone(),
+                    decision: format!("{:?}", sub.decision),
+                    decision_json: serde_json::json!({
+                        "reason": sub.reason,
+                        "marketable": sub.marketable,
+                        "side": format!("{:?}", signal.side),
+                        "signal_price": signal.price.to_string(),
+                        "signal_size": signal.size.to_string(),
+                    })
+                    .to_string(),
+                    decided_at_ns: chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default(),
+                    submitted_qty: Some(sub.submitted_qty.to_string()),
+                    limit_price: Some(sub.price.to_string()),
+                    queue_ahead: None,
+                    filled_qty: executed.to_string(),
+                    avg_fill_price: Some(sub.price.to_string()),
+                    fees: "0".into(),
+                    book_state_id: None,
+                })
+                .map_err(|e| format!("record simulation: {e}"))?;
+            sims_recorded += 1;
+            tally(
+                policy,
+                sub.decision,
+                sub.submitted_qty,
+                executed,
+                &mut decisions,
+            );
+        }
+    }
+
+    let mut lines = vec![format!(
+        "shadow-run: {} signals, scenario {scenario:?}, {} simulation rows, {} portfolio refusals",
+        signals.len(),
+        sims_recorded,
+        refusals
+    )];
+    for ((policy, d), (n, submitted, executed)) in &decisions {
+        lines.push(format!(
+            "  {policy:<11} {d:?}: n={n} submitted={submitted} executed={executed}"
+        ));
+    }
+    lines.push(format!(
+        "  portfolio: cash={} gross={} positions={}",
+        portfolio.cash,
+        portfolio.gross_exposure(),
+        portfolio.positions.len()
+    ));
+    Ok(lines.join("\n"))
+}
+
+/// Observed trade size is not carried on the signal row yet (the wallet
+/// feed's per-fill size is the best available proxy at this stage); the
+/// queue's optimistic-justified flag uses it and is refined in docs/09.
+fn signal_size_placeholder() -> rust_decimal::Decimal {
+    rust_decimal::Decimal::ZERO
+}
