@@ -17,3 +17,6 @@ data/*.db-wal
 # Rust
 target/
 **/target/
+
+# Runtime logs stay local (regenerable; capture log grows unboundedly)
+data/logs/
