@@ -123,7 +123,7 @@ async fn rate_limit_backoff_and_final_success() {
 
     // Deterministic two-phase responder: 429 first, then success. The
     // Retry-After hint of 1s dominates the full-jitter base backoff
-    // ([0, 400]ms at attempt 0), making the pause deterministic — the old
+    // ([0, 400]ms at attempt 0), making the pause deterministic - the old
     // hint=0 form asserted on a jitter roll and flaked ~25% of runs.
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;

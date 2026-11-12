@@ -1,4 +1,4 @@
-# 08 — Shadow Execution Model: Queue Estimation & Replication Simulation
+# 08 - Shadow Execution Model: Queue Estimation & Replication Simulation
 
 **Phase 2 §5 · Status: design frozen; implementation in `crates/shadow-exec` · Strictly read-only: no orders, no keys, no submissions. A simulated order is NEVER an executed trade.**
 
@@ -13,17 +13,17 @@ economic question:
 
 > Can a follower with **<$50** of capital, watching only **public** data
 > (wallet activity feed + CLOB market channel), economically replicate
-> Tokor's observable fills — and what does the unavoidable latency +
+> Tokor's observable fills - and what does the unavoidable latency +
 > queue uncertainty do to the result?
 
 Three coupled components give the answer:
 
-1. **Queue-ahead engine** — given the recorded book state at the moment we
+1. **Queue-ahead engine** - given the recorded book state at the moment we
    *first see* a signal, estimate how much same-side queue stands between
    the follower and the front of the book at Tokor's price level.
-2. **Fill simulators** — exact-copy and intelligent-copy policies that
+2. **Fill simulators** - exact-copy and intelligent-copy policies that
    decide `submit / not submit` and, separately, what would have filled.
-3. **Portfolio simulator** — a $49 account that absorbs those simulated
+3. **Portfolio simulator** - a $49 account that absorbs those simulated
    fills and reports net EV after fees, spread cost, and adverse selection.
 
 The cardinal rule, stated everywhere it matters:
@@ -41,7 +41,7 @@ under the explicit conditions of §4.
 | Fee model | docs/02 (triple-verified) | `size × rate × p × (1−p)`, round5, min 1e-5 |
 
 A signal whose book is not decision-ready at the moment of first sight is
-**not simulated** — it is recorded as `DATA_INSUFFICIENT` and counted.
+**not simulated** - it is recorded as `DATA_INSUFFICIENT` and counted.
 Silently filling from a stale book is the classic shadow-simulator lie; we
 refuse it by construction.
 
@@ -68,7 +68,7 @@ single point.
 **Queue validity rule:** the queue estimate is only computed from a book
 state that is decision-ready *and* from the same price level the signal
 traded at. If the level is gone (the trade consumed it), the Baseline
-assumption degenerates — that case is tagged `LEVEL_CONSUMED` and evaluated
+assumption degenerates - that case is tagged `LEVEL_CONSUMED` and evaluated
 under the Optimistic rule with an explicit flag, never silently.
 
 ## 4. Fill-credit rules (what counts as an executed simulated fill)
@@ -84,14 +84,14 @@ a fill of size `s` only when the public tape provides direct evidence:
    us under the active scenario; `s` is then the remaining unfilled
    quantity, capped by the visible consuming flow.
 3. **Level integrity:** if a book update *deletes* our price level before we
-   are filled, the order is **cancelled** (the market moved through us) —
+   are filled, the order is **cancelled** (the market moved through us) -
    recorded as `CANCELLED_LEVEL_GONE`, never as a fill.
 4. **Staleness kill:** if book state goes stale or a gap is declared
    (`invalidate()` semantics from docs/07 §4), fills freeze until the
    snapshot reconciles; evidence accrued across a gap is discarded.
 
 Marketable (crossing) submissions are credited only against visible
-opposing size at their limit, and always pay the aggressor fee + spread —
+opposing size at their limit, and always pay the aggressor fee + spread -
 the Conservative scenario's cost structure.
 
 ## 5. Decision vocabulary (both simulators emit the same grammar)
@@ -103,7 +103,7 @@ the Conservative scenario's cost structure.
 | `RESIZE` | Copy but clamp size to the $49 budget / risk cap. |
 | `WAIT` | Book not decision-ready, or queue scenario says stand aside; re-evaluate next signal. |
 | `REJECT` | Signal fails policy checks (fee-tier economics, price band, category filter). |
-| `REDUCE_EXISTING_POSITION` | Tokor's fill would *increase* exposure we are capped on — copy only the reduction. |
+| `REDUCE_EXISTING_POSITION` | Tokor's fill would *increase* exposure we are capped on - copy only the reduction. |
 | `DATA_INSUFFICIENT` | No usable book/trade evidence; counted, never simulated. |
 
 `submitted_qty` is set by the decision; `executed_qty` only by §4. The
@@ -116,7 +116,7 @@ Intelligent-copy adds three public-data rules, each falsifiable:
 
 1. **Fee-aware price improvement:** on fee-tier markets, resting at
    Tokor's exact price earns zero fee (docs/06 §4.1: makers pay nothing),
-   but so do we — while the *aggressor* pays. If Tokor's fill was an
+   but so do we - while the *aggressor* pays. If Tokor's fill was an
    aggressor fill (`CONFIRMED_TAKER`), the immediate level was consumable:
    copy passively one tick *inside* (join the far side of the spread) when
    the recorded spread supports it, else copy exact.
@@ -137,7 +137,7 @@ after first sight. Markouts answer two separate questions:
 * **Signal quality:** does Tokor's trade predict short-term drift? (This is
   the follower's edge, if any.)
 * **Adverse selection tax:** how much does the follower pay for acting
-  *late* — i.e. how much of the move happens between exchange time and our
+  *late* - i.e. how much of the move happens between exchange time and our
   first-seen time? (Measured directly by §4's `observe-source` chain plus
   markout deltas between those stamps.)
 
@@ -171,10 +171,10 @@ Markouts are computed per scenario-weight so docs/09 can decompose:
 ## 9. Open items
 
 1. Tick-size lattice for price improvement (polymarket CLOB tick = 0.001
-   vs 0.01 markets) — confirm per-market from recorded books before
+   vs 0.01 markets) - confirm per-market from recorded books before
    enabling rule 6.1.
 2. Queue model refinement using public-trade *removal* inference
    (visible-size decrements without trades = cancellations ahead of us).
 3. Parameter freeze for docs/09: scenario weights, budget cap, category
-   gate — frozen before any results are quoted, to keep the report
+   gate - frozen before any results are quoted, to keep the report
    out-of-sample honest.

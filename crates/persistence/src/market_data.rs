@@ -3,7 +3,7 @@
 //! shadow-execution simulations (migration 0004).
 //!
 //! Write paths are batch-transactional (the WS session produces bursts);
-//! retention pruning touches ONLY `raw_market_messages` — normalized states,
+//! retention pruning touches ONLY `raw_market_messages` - normalized states,
 //! snapshots, trades, and simulations are research evidence and are never
 //! pruned automatically.
 
@@ -127,7 +127,7 @@ pub struct SourceObservationRow {
 }
 
 /// One shadow-execution decision. A submitted simulation order is NOT an
-/// executed trade — `filled_qty` is evidence-backed only.
+/// executed trade - `filled_qty` is evidence-backed only.
 #[derive(Debug, Clone)]
 pub struct SimulationRow {
     pub strategy: String,
@@ -168,7 +168,7 @@ pub trait MarketDataRepository {
     fn load_book_states(&self, token_id: &str, limit: u64) -> Result<Vec<BookStateRow>>;
     fn load_trades(&self, token_id: &str, limit: u64) -> Result<Vec<TradeEventRow>>;
     /// Signals for the shadow-run command: fills joined with their verified
-    /// fee rate (NULL when the category has no verified model — the
+    /// fee rate (NULL when the category has no verified model - the
     /// intelligent policy's category gate rejects those).
     fn load_sim_signals(&self, limit: u64) -> Result<Vec<SimSignalRow>>;
 }

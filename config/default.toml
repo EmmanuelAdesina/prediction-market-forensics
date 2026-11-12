@@ -16,9 +16,11 @@ max_retries = 5
 [clob]
 base_url = "https://clob.polymarket.com"
 
-# Gamma API (event tags / descriptions enrichment).
+# Gamma API (event tags / descriptions enrichment; dip-market registry sync).
 [gamma]
 base_url = "https://gamma-api.polymarket.com"
+page_limit = 100
+page_pause_ms = 300
 
 [storage]
 db_path = "data/tokor.db"

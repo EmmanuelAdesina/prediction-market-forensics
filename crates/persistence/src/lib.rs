@@ -3,7 +3,7 @@
 //! Invariants implemented here:
 //! - Migrations run transactionally, versioned, idempotent.
 //! - Cursor advancement happens **in the same transaction** as the page's
-//!   fills — a crash can never advance the cursor without the data, and can
+//!   fills - a crash can never advance the cursor without the data, and can
 //!   never commit fills without the cursor (all-or-nothing per page).
 //! - `PRAGMA foreign_keys=ON`, `journal_mode=WAL`, `synchronous=FULL`.
 //! - Raw API pages are immutable forensic records: insert-only.
@@ -12,6 +12,7 @@
 //!   many rows were actually new.
 
 pub mod activity;
+pub mod dip_registry;
 pub mod ingest;
 pub mod market_data;
 pub mod markets;
@@ -61,6 +62,10 @@ pub const MIGRATIONS: &[(&str, &str)] = &[
     (
         "0004_market_data",
         include_str!("../../../migrations/0004_market_data.sql"),
+    ),
+    (
+        "0005_dip_registry",
+        include_str!("../../../migrations/0005_dip_registry.sql"),
     ),
 ];
 
@@ -184,7 +189,7 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(tables, 22);
+        assert_eq!(tables, 25);
         let versions: Vec<String> = conn
             .prepare("SELECT version FROM schema_migrations ORDER BY version")
             .unwrap()
@@ -199,6 +204,7 @@ mod tests {
                 "0002_markets_positions",
                 "0003_activity_fees_positions",
                 "0004_market_data",
+                "0005_dip_registry",
             ]
         );
     }

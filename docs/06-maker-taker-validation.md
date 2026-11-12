@@ -1,4 +1,4 @@
-# 06 — Maker/Taker Validation: On-Chain Role Verification
+# 06 - Maker/Taker Validation: On-Chain Role Verification
 
 **Phase 2 §2 · Status: decoder + role engine verified on a 200-tx sample; full 13.3k-tx corpus run in flight · Read-only public RPC, no keys.**
 
@@ -16,7 +16,7 @@ Polymarket exchange contract. Decoding those events gives, per fill:
 * the exact amounts and fee the contract charged,
 * which exchange generation executed the trade.
 
-Method: `scripts/onchain_role_validation.py` — for each distinct tx in
+Method: `scripts/onchain_role_validation.py` - for each distinct tx in
 `source_fills`, `eth_getTransactionReceipt` over keyless public Polygon RPCs
 (batched 10/POST, paced, multi-endpoint rotation, verbatim receipts cached to
 `data/raw/onchain_receipts/`), decode fill events, classify, and join back to
@@ -35,18 +35,18 @@ The wallet's trading history spans **three** exchange contracts:
 The v2 exchange is where all fee-tier (7% crypto) markets execute. Its fill
 event is **not** the v1 `OrderFilled`: 3 indexed fields (`orderHash`, `maker`,
 `taker`) + **7** data words (v1 has 5). Its signature could not be matched to
-any candidate name by keccak (open item — resolve from verified source), so
+any candidate name by keccak (open item - resolve from verified source), so
 the topic0 is pinned empirically:
 
 ```
 0xd543adfd945773f1a62f74f0ee55a5e3b9b1a28262980ba90b1a89f2ea84d8ee
 ```
 
-v2 layout (validated field-by-field against the feed's ground truth — price,
-size, cash — on live tx `0xdb01bd6a…`):
+v2 layout (validated field-by-field against the feed's ground truth - price,
+size, cash - on live tx `0xdb01bd6a…`):
 
 ```
-[0] side of the event maker's order   (0=BUY, 1=SELL)  — 165/165 sample agreement
+[0] side of the event maker's order   (0=BUY, 1=SELL)  - 165/165 sample agreement
 [1] tokenId
 [2] makerAmountFilled                 (1e6 scale)
 [3] takerAmountFilled                 (1e6 scale)
@@ -91,33 +91,33 @@ TRADE-type through this endpoint (redeem/merge lifecycle arrives via
 positions snapshot + on-chain data instead). The on-chain columns of this
 comparison fill in from the full-corpus walk (§6.1).
 
-### 4.1 Fee ground truth — the §2 payoff
+### 4.1 Fee ground truth - the §2 payoff
 
 The v2 event carries the contract's actual fee, charged **in USDC, to the
 event maker, on top of the gross amount** (v1 deducted fees from proceeds in
-asset units — a real semantic change). Sample findings:
+asset units - a real semantic change). Sample findings:
 
 * Every resting-maker event carries **fee = 0** (18/18 own-order maker events
-  in the sample with zero fee) — "makers pay nothing" is now on-chain fact,
+  in the sample with zero fee) - "makers pay nothing" is now on-chain fact,
   not just feed arithmetic.
 * The wallet's aggressor events carry exactly the Phase-1.5 model fee:
-  `fee = size × rate × p × (1−p)` with rate = 0.07 on crypto markets —
+  `fee = size × rate × p × (1−p)` with rate = 0.07 on crypto markets -
   agreement within 1×10⁻⁵ USDC (the chain truncates at 1e6-integer
-  precision; our model rounds half-up at 5 dp — the documented envelope).
+  precision; our model rounds half-up at 5 dp - the documented envelope).
 * At p > 0.5 (e.g. p=0.9726, fee 9.56898) the repo-main formula
-  `rate × min(p,1−p) × size / p` would give ≈ 10.11 — **ruled out**. The
+  `rate × min(p,1−p) × size / p` would give ≈ 10.11 - **ruled out**. The
   deployed contract implements the `p(1−p)` shape that docs/02 verified
   empirically across 13,956 rows.
 
-**Conclusion of §1/§2 together:** the fee model is now triple-verified —
+**Conclusion of §1/§2 together:** the fee model is now triple-verified -
 feed-side (13,956 rows, 0 band failures), model-side (exact on three live
 rows), and now chain-side (event `fee` field). The `cash_implied_price`
 separation and fee-band ingestion validation stand on on-chain evidence.
 
 ## 5. Accounting semantics confirmed on-chain
 
-* Maker fills: cash == gross (fee never charged) — event-fee = 0.
-* Taker fills: cash == gross + fee (USDC, on top) — matches the feed's
+* Maker fills: cash == gross (fee never charged) - event-fee = 0.
+* Taker fills: cash == gross + fee (USDC, on top) - matches the feed's
   `usdc_size` decomposition exactly.
 * The aggressor emits *two* event kinds in one tx: its own order event
   (maker slot, taker = exchange, fee > 0 when fee-tier) and one event per
@@ -125,14 +125,14 @@ separation and fee-band ingestion validation stand on on-chain evidence.
 
 ## 6. Open items
 
-1. **Full corpus** — the 13.3k-tx walk is running; this doc's §4/§5 numbers
+1. **Full corpus** - the 13.3k-tx walk is running; this doc's §4/§5 numbers
    will be regenerated from `data/derived/liquidity_role_validation.parquet`
    (all-role distributions per market category, maker share by
    count/volume/notional cross-checked on-chain).
-2. **v2 event signature** — resolve the event name/types from verified
+2. **v2 event signature** - resolve the event name/types from verified
    contract source; keep the empirically-pinned topic0 as the fallback.
-3. **v2 words [5..6]** — zero in all samples; likely operator/surplus fields.
+3. **v2 words [5..6]** - zero in all samples; likely operator/surplus fields.
    Record raw; revisit if any sample shows non-zero.
-4. **v1 fee units** — v1 fees are denominated in the order's taker asset
+4. **v1 fee units** - v1 fees are denominated in the order's taker asset
    (tokens for BUY orders); the wallet's v1-era fills pre-date fee tiers, so
-   expected fee = 0 — verify in the full corpus.
+   expected fee = 0 - verify in the full corpus.

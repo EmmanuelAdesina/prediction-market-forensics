@@ -1,7 +1,7 @@
 //! Phase-1.5 accounting-model regression tests.
 //!
 //! Contract (docs/02, docs/04 §6.3): the four money quantities of a fill are
-//! distinct — displayed execution price `price`, gross notional
+//! distinct - displayed execution price `price`, gross notional
 //! `gross_usdc()`, charged fee (`fee_reconciliation`, via the fee model), and
 //! total cash `usdc_size`. `cash_implied_price` is a cash view, never the
 //! execution price. Historical source records are never modified.
@@ -46,7 +46,7 @@ fn fill(side: Side, size: f64, price: f64, usdc: f64) -> SourceFill {
 
 /// Maker fill on a fee-category market: cash == gross within the source's
 /// float envelope; the fee model produces a *would-be* taker fee (71.70 for
-/// the live WTI fixture) but the classification charges the maker zero —
+/// the live WTI fixture) but the classification charges the maker zero -
 /// all four quantities distinct.
 #[test]
 fn maker_fill_accounting_decomposition() {
@@ -100,7 +100,7 @@ fn classification_matches_accounting() {
 }
 
 /// Fee-free category markets: gross == cash regardless of role, and the
-/// fee fields stay zero — the fee model never invents a fee.
+/// fee fields stay zero - the fee model never invents a fee.
 #[test]
 fn fee_free_category_never_charges() {
     let (v, face) = classify_fill(
@@ -148,7 +148,7 @@ fn normalized_fill_serializes_separated_fields() {
 /// must normalize (Phase-2 §1 regression: fee-band validation).
 #[test]
 fn fee_band_accepts_high_premium_taker_fills() {
-    // tx 0xdb01bd6a89… — premium 5.740% = 0.07 × (1 − 0.18)
+    // tx 0xdb01bd6a89… - premium 5.740% = 0.07 × (1 − 0.18)
     let f = fill(Side::Buy, 7013.5, 0.18, 1334.89348);
     let fee = charged_fee(f.size, f.price, dec!(0.07));
     assert_eq!(fee, dec!(72.46348));
@@ -158,24 +158,24 @@ fn fee_band_accepts_high_premium_taker_fills() {
     assert_eq!(v, FillVerdict::VerifiedFeeInclusive);
     assert_eq!(face, FillFace::Taker);
 
-    // tx 0x675d461924… — full-precision displayed price, premium 5.741%.
+    // tx 0x675d461924… - full-precision displayed price, premium 5.741%.
     // The backend's float-serialized cash differs from gross + round5(fee)
-    // by 8.9e-6 here — inside the documented 2e-5 envelope, so the strict
+    // by 8.9e-6 here - inside the documented 2e-5 envelope, so the strict
     // equality holds only up to that envelope (docs/02 §2).
     let f = fill(Side::Buy, 34700.0, 0.1799005504, 6600.91487);
     let fee = charged_fee(f.size, f.price, dec!(0.07));
     assert_eq!(fee, dec!(358.36578));
     assert!((f.usdc_size - f.gross_usdc() - fee).abs() <= dec!(0.00002));
 
-    // tx 0xa0a8a4cb08… — premium 5.180% = 0.07 × (1 − 0.26)
+    // tx 0xa0a8a4cb08… - premium 5.180% = 0.07 × (1 − 0.26)
     let f = fill(Side::Buy, 19095.69, 0.26, 5222.06015);
     let fee = charged_fee(f.size, f.price, dec!(0.07));
     assert_eq!(fee, dec!(257.18075));
     assert_eq!(f.usdc_size, f.gross_usdc() + fee);
 }
 
-/// Cash more than the maximum published premium (7%) above gross — or below
-/// gross beyond the float envelope — cannot be reconciled under ANY category
+/// Cash more than the maximum published premium (7%) above gross - or below
+/// gross beyond the float envelope - cannot be reconciled under ANY category
 /// and must be rejected, never force-fit.
 #[test]
 fn fee_band_rejects_out_of_schedule_cash() {

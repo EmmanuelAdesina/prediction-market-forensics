@@ -43,7 +43,7 @@ pub struct PriceChangeMsg {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PriceChangeLevel {
     pub price: String,
-    pub side: String, // "BUY" | "SELL" — the side of the BOOK the level sits on
+    pub side: String, // "BUY" | "SELL" - the side of the BOOK the level sits on
     pub size: String,
 }
 
@@ -124,7 +124,7 @@ pub fn subscribe_body(asset_ids: &[String]) -> String {
 
 /// Parse a REST `/book` response body. The REST body carries the same shape
 /// as a WS `book` event but without the `event_type` discriminator; inject it
-/// so one parser serves both. Returns `None` for bodies that fail to parse —
+/// so one parser serves both. Returns `None` for bodies that fail to parse -
 /// the raw layer still records them verbatim.
 pub fn parse_book_body(text: &str) -> Option<BookMsg> {
     let mut v: Json = serde_json::from_str(text).ok()?;

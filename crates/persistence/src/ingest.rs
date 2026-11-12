@@ -298,7 +298,7 @@ pub(crate) fn fill_from_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<SourceFil
         size,
         usdc_size,
         price,
-        // Per-share cash amount recomputed from persisted Decimals —
+        // Per-share cash amount recomputed from persisted Decimals -
         // never stored, never fabricated (Phase-1.5: not the execution price).
         cash_implied_price: usdc_size / size,
         outcome_index: r.get("outcome_index")?,

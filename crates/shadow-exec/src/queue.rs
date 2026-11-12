@@ -13,7 +13,7 @@
 //!
 //! A signal whose price level is absent from the book is tagged
 //! `LEVEL_CONSUMED`: the Baseline assumption degenerates and is evaluated
-//! under the Optimistic rule with the flag set — never silently.
+//! under the Optimistic rule with the flag set - never silently.
 
 use rust_decimal::Decimal;
 
@@ -37,7 +37,7 @@ pub enum QueueScenario {
 pub struct QueueEstimate {
     /// The price level exists in the recorded book.
     pub level_present: bool,
-    /// The observed trade size ≥ `Q_same` — the only state in which the
+    /// The observed trade size ≥ `Q_same` - the only state in which the
     /// Optimistic assumption (empty level) has support.
     pub optimistic_justified: bool,
     /// The level is absent (or zero) while the observed trade size is
@@ -47,7 +47,7 @@ pub struct QueueEstimate {
     pub same_side_size: Decimal,
     /// Opposing top-of-book size (crossing cost anchor).
     pub opposite_side_size: Decimal,
-    /// Best opposite price — the crossing price for Conservative.
+    /// Best opposite price - the crossing price for Conservative.
     pub opposite_price: Option<Decimal>,
 }
 
@@ -56,7 +56,7 @@ impl QueueEstimate {
     pub fn queue_ahead(&self, scenario: QueueScenario) -> Decimal {
         match scenario {
             QueueScenario::Optimistic => Decimal::ZERO,
-            // A consumed level has same_side_size = 0 — the degenerate
+            // A consumed level has same_side_size = 0 - the degenerate
             // Baseline falls out naturally and the `level_consumed` flag
             // carries the caveat for the report.
             QueueScenario::Baseline => self.same_side_size,
@@ -185,7 +185,7 @@ mod tests {
         let e = estimate_queue(&b, dec!(0.50), Side::Buy, dec!(30));
         assert!(!e.level_present);
         assert!(e.level_consumed);
-        // Baseline degenerates to the (now empty) same-side size — zero —
+        // Baseline degenerates to the (now empty) same-side size - zero -
         // and the tag is carried for the report, never hidden.
         assert_eq!(e.queue_ahead(QueueScenario::Baseline), Decimal::ZERO);
         // Conservative still crosses against the opposing top of book.

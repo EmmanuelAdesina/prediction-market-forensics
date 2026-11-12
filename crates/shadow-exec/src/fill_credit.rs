@@ -1,6 +1,6 @@
 //! Fill-credit rules (docs/08 §4): what counts as an EXECUTED simulated
 //! fill. A simulated passive order is credited a fill only when the public
-//! tape provides direct evidence — never from stale or gapped state.
+//! tape provides direct evidence - never from stale or gapped state.
 
 use rust_decimal::Decimal;
 
@@ -56,7 +56,7 @@ pub struct CreditOutcome {
 pub enum Terminal {
     /// Fully filled on evidence.
     Filled,
-    /// Level removed before we reached the front — cancelled (rule 3).
+    /// Level removed before we reached the front - cancelled (rule 3).
     CancelledLevelGone,
     /// Evidence ended (end of window) with quantity still open.
     Open,
@@ -68,7 +68,7 @@ pub enum Terminal {
 ///
 /// Price-time priority (rule 1): a trade at a price STRICTLY BETTER than
 /// ours on our side (higher bid / lower ask) before we reach the front
-/// proves others with priority — those prints do not count against the
+/// proves others with priority - those prints do not count against the
 /// queue, and they do not fill us. (A trade worse than ours never touches
 /// our level.)
 pub fn credit_fills(order: &PassiveOrder, events: &[EvidenceEvent]) -> CreditOutcome {
@@ -126,7 +126,7 @@ pub fn credit_fills(order: &PassiveOrder, events: &[EvidenceEvent]) -> CreditOut
                 };
             }
             EvidenceEvent::Gap { ts_ns: _ } | EvidenceEvent::Resynced { ts_ns: _ } => {
-                // Rule 4: freeze at a gap — accrued queue-credit is
+                // Rule 4: freeze at a gap - accrued queue-credit is
                 // discarded; the queue ahead is unknown again. We adopt the
                 // CONSERVATIVE reading: the order remains but we cannot
                 // claim the queue cleared, so queue_ahead resets to its
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn gap_discards_queue_credit() {
         // Queue 100; a 100-share print clears it; then a gap; then a print.
-        // Post-gap the queue is UNKNOWN — conservative reading restores it,
+        // Post-gap the queue is UNKNOWN - conservative reading restores it,
         // so the next print only clears the queue again.
         let o = order(dec!(50), dec!(100));
         let out = credit_fills(

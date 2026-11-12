@@ -3,7 +3,7 @@
 -- Design invariants (docs/07):
 -- * raw_market_messages is the immutable evidence layer: verbatim frames,
 --   never rewritten, retention-prunable only by age (never by research use).
--- * normalized_book_states stores ONLY verified states — a state derived from
+-- * normalized_book_states stores ONLY verified states - a state derived from
 --   deltas that cannot be reconciled is never normalized (stale-book
 --   rejection); every state carries a quality label and nanosecond stamps.
 -- * execution_simulations records decisions and simulated fills; a submitted
@@ -66,10 +66,10 @@ CREATE TABLE IF NOT EXISTS order_book_deltas (
 CREATE INDEX IF NOT EXISTS idx_delta_token_ns ON order_book_deltas (token_id, received_ns);
 
 -- Verified normalized states (NormalizedBookState). Quality:
---   SNAPSHOT            — built from a full REST/WS snapshot
---   DELTA_CONSISTENT    — delta applied with exchange-timestamp continuity
---   RECONCILED_AFTER_GAP— resynchronized after reconnect/gap
---   STALE               — retained for forensics, NEVER used for decisions
+--   SNAPSHOT            - built from a full REST/WS snapshot
+--   DELTA_CONSISTENT    - delta applied with exchange-timestamp continuity
+--   RECONCILED_AFTER_GAP- resynchronized after reconnect/gap
+--   STALE               - retained for forensics, NEVER used for decisions
 CREATE TABLE IF NOT EXISTS normalized_book_states (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     token_id       TEXT NOT NULL,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS normalized_book_states (
 
 CREATE INDEX IF NOT EXISTS idx_state_token_ns ON normalized_book_states (token_id, first_seen_ns);
 
--- Public trade events (PublicTradeEvent) — observable matched volume, the
+-- Public trade events (PublicTradeEvent) - observable matched volume, the
 -- queue-model's consumption signal.
 CREATE TABLE IF NOT EXISTS public_trade_events (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

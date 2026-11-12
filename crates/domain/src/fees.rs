@@ -1,4 +1,4 @@
-//! Polymarket fee model — implemented exactly per the published schedule
+//! Polymarket fee model - implemented exactly per the published schedule
 //! (help.polymarket.com "Trading Fees", 2026-07-10) and verified against
 //! source observations (docs/02-fee-model-investigation.md).
 //!

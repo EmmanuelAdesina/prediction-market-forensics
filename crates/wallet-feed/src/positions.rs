@@ -1,7 +1,7 @@
 //! Positions fetcher: `GET /v2/positions` cursor walk (verified wire shape).
 //!
 //! The endpoint paginates exactly like `/v2/activity`: a `pagination` object
-//! with `limit`, `offset`, `has_more`, and an opaque (signed) `next_cursor` —
+//! with `limit`, `offset`, `has_more`, and an opaque (signed) `next_cursor` -
 //! the cursor must be followed, not the offset. Polymarket's cursor embeds the
 //! sort key (`s=CURRENT_VALUE`, `dir=DESC`), so pages are newest-value first.
 //!

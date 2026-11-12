@@ -94,7 +94,7 @@ fn fee_premium_rows_are_fee_explainable() {
     // The former 82-row suspect family: usdc ≈ price*size × 1.0504.. on
     // dip-ladder markets. Phase 1.5 verified these as taker sweeps under the
     // published fee schedule (premium = rate×(1−p)); they now normalize, and
-    // the fee model pins the verdict — never force-fit, always category-exact.
+    // the fee model pins the verdict - never force-fit, always category-exact.
     let mut raw = sample_raw();
     raw.price = 0.28_f64;
     raw.size = 4144.31_f64;

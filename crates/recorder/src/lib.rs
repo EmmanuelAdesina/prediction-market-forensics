@@ -6,9 +6,9 @@
 //! states) consumed by the shadow-execution simulators.
 //!
 //! Module map:
-//! * [`messages`] — CLOB market-channel wire types (tolerant parsing).
-//! * [`book`] — snapshot+delta state machine with gap/staleness invariants.
-//! * `session` (next increment) — WS lifecycle: bounded channels, backoff,
+//! * [`messages`] - CLOB market-channel wire types (tolerant parsing).
+//! * [`book`] - snapshot+delta state machine with gap/staleness invariants.
+//! * `session` (next increment) - WS lifecycle: bounded channels, backoff,
 //!   reconnect with jitter, snapshot refresh after reconnect, dynamic
 //!   subscription updates.
 
@@ -72,7 +72,7 @@ pub enum RecorderError {
     Config(String),
 }
 
-/// Wall-clock nanos (UTC epoch) — the common timestamp currency for all
+/// Wall-clock nanos (UTC epoch) - the common timestamp currency for all
 /// recorder stamps. Elapsed-time math pairs these with monotonic clocks at
 /// the call site (an Instant is captured alongside when needed).
 pub fn now_ns() -> i64 {

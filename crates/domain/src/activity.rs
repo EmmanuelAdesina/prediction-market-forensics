@@ -173,10 +173,10 @@ pub struct SourceFill {
     pub side: Side,
     /// Share quantity (positive).
     pub size: Decimal,
-    /// Execution price, always in `[0, 1]` — the source's displayed view
+    /// Execution price, always in `[0, 1]` - the source's displayed view
     /// (observed: floor-rounded to 2 decimals on some rows).
     pub price: Decimal,
-    /// Gross notional `price × size` — fee-free view of the trade.
+    /// Gross notional `price × size` - fee-free view of the trade.
     ///
     /// Phase-1.5 accounting correction: the four money quantities of a fill
     /// are distinct and must never be conflated:
@@ -187,7 +187,7 @@ pub struct SourceFill {
     ///   total cash flow           = `usdc_size`
     pub usdc_size: Decimal,
     /// Per-share CASH amount `usdc_size / size` (fee-inclusive for taker
-    /// fills, gross for makers). **This is NOT the execution price** — the
+    /// fills, gross for makers). **This is NOT the execution price** - the
     /// execution price is the displayed `price` field. Retained because it
     /// reproduces Polymarket's own cost-basis arithmetic in the position
     /// reconstruction; the fee component is tracked separately so the gross
@@ -261,11 +261,11 @@ impl SourceFill {
         }
 
         // Exact per-share price implied by the source amounts: usdc/size.
-        // This is source-derived arithmetic, not fabrication — but only
+        // This is source-derived arithmetic, not fabrication - but only
         // trustworthy when the displayed price corroborates it.
         let cash_implied_price = usdc / size;
 
-        // Fee-aware cash consistency (docs/02 §2 — the verified model):
+        // Fee-aware cash consistency (docs/02 §2 - the verified model):
         // total cash is `gross + fee` where `fee = size × rate × p × (1−p)`,
         // rate ≤ 0.07 across every published category, serialized by the
         // backend with a ≤ 2×10⁻⁵ absolute float envelope. Ingestion accepts
@@ -279,7 +279,7 @@ impl SourceFill {
         if !fee_band_ok {
             // Outside every published fee schedule: cash cannot be
             // reconciled with the displayed price under any category.
-            // Preserved raw upstream, rejected here — never force-fit.
+            // Preserved raw upstream, rejected here - never force-fit.
             return Err(IngestionError::Validation(format!(
                 "usdc_size {usdc} outside the fee band of gross {implied} \
                  (price {price} × size {size}): cash − gross must lie in \
@@ -422,7 +422,7 @@ pub struct IngestionBatch {
     /// All-type activity events (Phase 1.5): lenient normalization with
     /// deterministic occurrence identity.
     pub events: Vec<crate::activity_events::ActivityEvent>,
-    /// Rows preserved raw but failing normalization — never silently dropped.
+    /// Rows preserved raw but failing normalization - never silently dropped.
     pub invalid_records: usize,
     /// Rows normalized as events but not as strict fills (non-TRADE types).
     pub non_trade_records: usize,

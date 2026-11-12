@@ -2,7 +2,7 @@
 //!
 //! Raw payloads are stored verbatim (`clob_meta_json`, `gamma_meta_json`);
 //! normalized columns are COALESCE-updated so re-runs never erase data. No
-//! classification happens here — `classify-markets` is a separate command so
+//! classification happens here - `classify-markets` is a separate command so
 //! decisions are observable and retryable independently.
 
 use tokor_market_data::MarketDataClient;
@@ -134,7 +134,7 @@ fn first_slug(v: &serde_json::Value) -> Option<String> {
 
 /// Gamma tags arrive either as objects (`{"slug": "...", "label": "..."}`) or
 /// plain strings; normalize to slugs and never drop entries.
-fn tag_list(event: &serde_json::Value) -> Vec<String> {
+pub(crate) fn tag_list(event: &serde_json::Value) -> Vec<String> {
     let mut out = Vec::new();
     if let Some(list) = event.get("tags").and_then(|t| t.as_array()) {
         for t in list {

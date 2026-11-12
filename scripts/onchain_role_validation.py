@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 2 §2 — on-chain liquidity-role validation via Polygon receipts.
+"""Phase 2 §2 - on-chain liquidity-role validation via Polygon receipts.
 
 Read-only. For every distinct transaction hash in `source_fills`, fetch the
 transaction receipt from a public Polygon RPC (no key), decode fill events
@@ -10,9 +10,9 @@ Contract generations seen in the wallet's corpus (verified 2026-11-10):
 
   * v2 fee-era exchange  0xe111180000d2663c0091e4f400237545b87b996b
       fill event topic0 0xd543adfd945773f1a62f74f0ee55a5e3b9b1a28262980ba90b1a89f2ea84d8ee
-      (signature name unresolved — topic0 pinned empirically; 3 indexed
+      (signature name unresolved - topic0 pinned empirically; 3 indexed
        [orderHash, maker, taker] + 7 data words:
-       [0] side of the event maker's order (0=BUY, 1=SELL — validated
+       [0] side of the event maker's order (0=BUY, 1=SELL - validated
            against the feed across the sample),
        [1] tokenId,
        [2] makerAmountFilled, [3] takerAmountFilled,

@@ -5,11 +5,11 @@
 **/secrets*
 private_key*
 
-# Raw API captures — forensic value but bulky; keep curated fixtures only
+# Raw API captures - forensic value but bulky; keep curated fixtures only
 data/raw/
 !data/raw/.gitkeep
 
-# Live durable state (database + WAL siblings) — operator-owned, not source
+# Live durable state (database + WAL siblings) - operator-owned, not source
 data/*.db
 data/*.db-shm
 data/*.db-wal

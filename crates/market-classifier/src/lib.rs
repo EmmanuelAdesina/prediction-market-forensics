@@ -5,7 +5,7 @@
 //!    Threshold phrasing is shared with WTI / gold / stock markets, and naive
 //!    keyword matching on threshold language overmatches (see the WTI leak in
 //!    the Phase 0 data). The exclusion layer wins first, always.
-//! 2. **Crypto affirmation**: at least one reliable crypto signal — icon
+//! 2. **Crypto affirmation**: at least one reliable crypto signal - icon
 //!    filename markers ("BTC", "ETH"), event tags, or word-boundary asset
 //!    naming in title/slug/description.
 //!
@@ -209,3 +209,9 @@ fn dedup_signals(s: Vec<EvidenceSignal>) -> Vec<EvidenceSignal> {
 
 /// Re-export the version alias used in persisted classification records.
 pub type Decision = ClassifiedVerdict;
+
+pub mod dip;
+pub use dip::{
+    determine_asset, is_dip_question, is_eligible, normalize_gamma_market,
+    parse_barrier_from_title, GammaMarketInput, DIP_VERIFIER_VERSION, PROVENANCE_GAMMA_HIT_PRICE,
+};

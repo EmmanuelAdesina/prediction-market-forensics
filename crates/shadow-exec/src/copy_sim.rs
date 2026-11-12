@@ -2,8 +2,8 @@
 //!
 //! * Exact-copy is the control: same side, same price, budget-clamped.
 //! * Intelligent-copy adds three public-data rules, each falsifiable:
-//!   1. fee-aware price improvement (makers pay zero on-chain — docs/06
-//!      §4.1 — so a Tokor TAKER fill proves the level was consumable; join
+//!   1. fee-aware price improvement (makers pay zero on-chain - docs/06
+//!      §4.1 - so a Tokor TAKER fill proves the level was consumable; join
 //!      one tick inside when the recorded spread supports it),
 //!   2. category gate (only verified-fee categories),
 //!   3. exposure cap ($49 gross notional; overflow → Resize or reduce).
@@ -15,7 +15,7 @@ use tokor_domain::activity::Side;
 use crate::decision::{Decision, Submission};
 use crate::queue::{estimate_queue, QueueEstimate, QueueScenario};
 
-/// Budget/exposure state the policy needs (kept plain — no persistence).
+/// Budget/exposure state the policy needs (kept plain - no persistence).
 #[derive(Debug, Clone)]
 pub struct BudgetState {
     /// Cash available, in USDC.
@@ -53,7 +53,7 @@ pub struct Signal {
     pub book: Option<tokor_recorder::book::BookState>,
 }
 
-/// The minimum policy configuration (frozen before results are quoted —
+/// The minimum policy configuration (frozen before results are quoted -
 /// docs/08 §9.3).
 #[derive(Debug, Clone, Copy)]
 pub struct PolicyConfig {
@@ -90,7 +90,7 @@ pub fn intelligent_copy(sig: &Signal, budget: &BudgetState, cfg: &PolicyConfig) 
     let Some(book) = sig.book.as_ref() else {
         return Submission::none(Decision::DataInsufficient, "no decision-ready book");
     };
-    // Rule 2: category gate — only markets with a verified fee model.
+    // Rule 2: category gate - only markets with a verified fee model.
     if sig.fee_rate.is_none() {
         return Submission::none(Decision::Reject, "category gate: fee model unverified");
     };
@@ -152,7 +152,7 @@ fn passive_submission(
     reason: &'static str,
 ) -> Submission {
     // USDC needed for the full size: shares × price (BUY side pays cash;
-    // SELL side commits inventory — modelled on the same notional cap).
+    // SELL side commits inventory - modelled on the same notional cap).
     let wanted = sig.price * sig.size;
     if budget.headroom() <= Decimal::ZERO {
         return Submission::none(Decision::ReduceExistingPosition, "cap reached");
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn intelligent_keeps_exact_price_on_tight_spread() {
-        // Spread 0.49→0.50 = 1 tick: improvement would land ON the ask —
+        // Spread 0.49→0.50 = 1 tick: improvement would land ON the ask -
         // refuse and copy exact.
         let mut s = sig(Side::Buy, dec!(0.49), dec!(10), Some(dec!(0.07)));
         s.book = Some(book(

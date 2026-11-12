@@ -1,13 +1,13 @@
-# 07 — Market-Data Architecture: Recorder, Book Engine & Latency Model
+# 07 - Market-Data Architecture: Recorder, Book Engine & Latency Model
 
-**Phase 2 §3–§4 · Status: recorder foundation implemented (`crates/recorder`), live capture pending · Strictly public data — no keys, no authentication, no orders.**
+**Phase 2 §3–§4 · Status: recorder foundation implemented (`crates/recorder`), live capture pending · Strictly public data - no keys, no authentication, no orders.**
 
 ---
 
 ## 1. Purpose and threat model
 
-The shadow-execution question — *can Tokor's fills be economically replicated by a
-follower with <$50?* — is decided by book microstructure at the moment of each
+The shadow-execution question - *can Tokor's fills be economically replicated by a
+follower with <$50?* - is decided by book microstructure at the moment of each
 source fill. The recorder exists to produce that evidence. Two design rules
 dominate everything else:
 
@@ -34,8 +34,8 @@ crates/recorder
 
 ### 2.1 Wire layer (`messages.rs`)
 
-Parses the four documented market-channel event types — `book`,
-`price_change`, `tick_size_change`, `last_trade_price` — plus an `Other`
+Parses the four documented market-channel event types - `book`,
+`price_change`, `tick_size_change`, `last_trade_price` - plus an `Other`
 variant that **keeps the verbatim JSON** for anything unrecognized. Unparseable
 frames are recorded as raw text and never normalized: the raw layer must be a
 complete record even when the protocol evolves. The subscription body uses the
@@ -46,7 +46,7 @@ discriminator; `parse_book_body` injects it so one parser serves both paths.
 
 ### 2.2 Book engine (`book.rs`)
 
-Per-token state machine over `BTreeMap<Decimal, Decimal>` levels — no floats
+Per-token state machine over `BTreeMap<Decimal, Decimal>` levels - no floats
 anywhere in book state. Invariants, each regression-tested:
 
 | Invariant | Enforcement |
@@ -58,21 +58,21 @@ anywhere in book state. Invariants, each regression-tested:
 | Staleness is a flag, not a deletion | `is_stale(now)` compares `updated_ns` to the configured bound |
 | Suspect state is dropped, not patched | `invalidate()` clears the state and sets `gap_pending`; the next delta hits `NoBaseState` (cannot extend a suspect book) and the next snapshot is labeled `RECONCILED_AFTER_GAP` |
 
-**Gap semantics — a correction worth recording.** The original design treated
+**Gap semantics - a correction worth recording.** The original design treated
 `price_change.hash` mismatch against the tracked hash as a gap signal. That is
 wrong on this feed: the exchange publishes the **post-update** hash, so
 consecutive events *never* share hashes. Hash continuity was removed as a
 detection rule and replaced by:
 
-* **Exchange-timestamp regression** — a delta stamped before the last applied
+* **Exchange-timestamp regression** - a delta stamped before the last applied
   event proves missed/reordered messages → `NeedsSnapshot(TimestampRegression)`.
   Timestamps are normalized tolerating both epoch-seconds and epoch-millis
   (the feed has used both).
-* **Reconnect invalidation** — every disconnect invalidates all retained
+* **Reconnect invalidation** - every disconnect invalidates all retained
   states; the fresh REST snapshot after reconnect is labeled
   `RECONCILED_AFTER_GAP`.
 
-Hashes are still recorded on every delta and state — they enable *offline*
+Hashes are still recorded on every delta and state - they enable *offline*
 reconciliation against REST snapshots (a future §3 extension), they just cannot
 detect gaps online.
 
@@ -81,21 +81,21 @@ detect gaps online.
 Four task roles, wired with bounded channels (explicit backpressure, never
 silent drops):
 
-* **Supervisor** — owns the command channel (`Subscribe` / `Unsubscribe` /
+* **Supervisor** - owns the command channel (`Subscribe` / `Unsubscribe` /
   `Shutdown`). The subscription ledger is the DB table `market_subscriptions`;
   a command updates the ledger and bumps a generation counter, and the
   connector closes + re-subscribes with the new set. Dynamic subscription
-  changes therefore take effect at reconnect — deliberately simple and
+  changes therefore take effect at reconnect - deliberately simple and
   correct, rather than protocol-clever.
-* **Connector** — one live WS session at a time. Connect → subscribe →
+* **Connector** - one live WS session at a time. Connect → subscribe →
   *REST snapshot refresh for every subscribed token* → read loop. On any
   exit: `on_disconnected()` (invalidates all engines), then exponential
   backoff with full jitter (capped, AWS-style) and reconnect. Gap detections
   and fresh staleness flags trigger an **immediate REST rescue** for that
   token instead of waiting for the periodic sweep.
-* **Raw writer** — drains a bounded queue (`raw_queue_depth`, default 8 192),
+* **Raw writer** - drains a bounded queue (`raw_queue_depth`, default 8 192),
   batches up to 256 rows into one transaction.
-* **State writer** — same pattern (depth 2 048, batches of 128) for
+* **State writer** - same pattern (depth 2 048, batches of 128) for
   deltas/states/trades/health.
 
 Every write path in `persistence::market_data` is a single transaction per
@@ -140,7 +140,7 @@ poll_start_ns ──→ http_response_ns ──→ first_seen_ns ──→ norma
   `http_response` timing (`activity page fetched` log line); the
   `source_observations` table generalizes it to per-row latency chains.
 * Reporting format: p50 / p95 / p99 **per stage and end-to-end**, by run.
-  Distributions, never means — the tail is what the replication question
+  Distributions, never means - the tail is what the replication question
   turns on.
 * Book-side freshness is stamped symmetrically: `received_ns` on every frame,
   `updated_ns` on every state; the *decision-time book age* is reported
@@ -148,7 +148,7 @@ poll_start_ns ──→ http_response_ns ──→ first_seen_ns ──→ norma
 
 Exchange-time vs receive-time skew (e.g., `book.timestamp` vs our
 `received_ns`) is recorded but never used to claim absolute publication
-latency — clock alignment with the exchange is not assumed.
+latency - clock alignment with the exchange is not assumed.
 
 ### 3.1 First measurements (30-probe smoke run, 2026-11-10)
 
@@ -167,12 +167,12 @@ Reading rules, so nobody over-claims:
   plus parse; the recorder's WS path removes this stage entirely (book is
   already in memory when the decision gate runs).
 * **`poll_start − exchange_ts` is NOT latency.** In the smoke run it read
-  ~511 s p50 — that is simply the age of the newest fill on page 1 (the
+  ~511 s p50 - that is simply the age of the newest fill on page 1 (the
   wallet had not traded recently). The follower's real reaction cost to a
   *fresh* fill = time since the last poll (0…poll-cycle) + poll→response +
   response→book. Only fresh-fill observations bound that quantity; a
   dedicated capture during active trading will measure it (§6.3).
-* 30 probes is a smoke sample, not a distribution — quoted only as the
+* 30 probes is a smoke sample, not a distribution - quoted only as the
   first end-to-end sanity bound: **sub-second p50 from poll start to
   decision-ready book.**
 
@@ -181,7 +181,7 @@ Reading rules, so nobody over-claims:
 ## 4. What the recorder does NOT do
 
 * No private keys, no authentication, no signed orders, no submissions (§12).
-* No order placement or cancellation messages — the user channel is not
+* No order placement or cancellation messages - the user channel is not
   connected at all.
 * No backfilling of history: the recorder starts when it starts. Historical
   microstructure questions route through §2's on-chain corpus instead.
@@ -207,12 +207,12 @@ Reading rules, so nobody over-claims:
 
 ## 6. Open items
 
-1. ~~CLI wiring~~ — done (`record-market` / `observe-source` dispatched from
+1. ~~CLI wiring~~ - done (`record-market` / `observe-source` dispatched from
    `main.rs`; flag values (`--probes N`, `--out PATH`) now parse correctly).
-2. **REST-hash reconciliation** — offline job comparing delta-chain hashes to
+2. **REST-hash reconciliation** - offline job comparing delta-chain hashes to
    periodic REST snapshot hashes; quantifies silent miss rate (feeds §6 of
    docs/09).
-3. **Live capture sessions** — target the BTC/ETH dip-ladder families the
+3. **Live capture sessions** - target the BTC/ETH dip-ladder families the
    wallet trades; ≥ 48h coverage before §8 simulations are run.
-4. **Latency harness** — wire `source_observations` into the ingestor run
+4. **Latency harness** - wire `source_observations` into the ingestor run
    loop (stamps exist as logging today; table write pending).

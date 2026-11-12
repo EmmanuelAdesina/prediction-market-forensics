@@ -4,7 +4,7 @@
 //! - BUYs open lots; SELLs consume them in strict FIFO order.
 //! - Realized PnL is only counted against *known* lots. A SELL with no
 //!   preceding known lot is recorded as `PRE_HISTORY_DISPOSAL` and does not
-//!   contribute to realized PnL — fabricating a cost basis is prohibited.
+//!   contribute to realized PnL - fabricating a cost basis is prohibited.
 //! - Unrealized PnL is only ever computed when the caller supplies an
 //!   independent valuation; nothing here invents prices.
 //! - Fees: entry fee appears in the Data API positions (entry_fees_usdc) but
@@ -133,7 +133,7 @@ impl PositionState {
                     self.realized_pnl += proceeds - cost;
                 }
                 if to_consume > Decimal::ZERO {
-                    // Sell exceeded known inventory — book remainder as
+                    // Sell exceeded known inventory - book remainder as
                     // unattributed (no invented cost basis), flag history gap.
                     self.history_probably_incomplete = true;
                     self.unattributed_disposals += to_consume;

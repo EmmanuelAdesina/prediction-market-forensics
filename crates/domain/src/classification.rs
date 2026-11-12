@@ -10,7 +10,7 @@ pub enum CryptoVerdict {
     Crypto,
     /// Definitively *not* crypto (commodities, FX, equities, sports, politics…).
     NonCrypto,
-    /// Insufficient evidence to decide — must be treated as NOT in scope
+    /// Insufficient evidence to decide - must be treated as NOT in scope
     /// for trading and queued for manual review.
     Unknown,
 }

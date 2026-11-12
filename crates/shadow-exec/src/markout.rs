@@ -3,12 +3,12 @@
 //! For every signal, the public-tape mid at +1 s / +5 s / +30 s / +5 m
 //! after first sight. Markouts answer two separate questions:
 //!
-//! * **Signal quality** — does Tokor's trade predict short-term drift?
-//! * **Adverse-selection tax** — how much of the move happens between
+//! * **Signal quality** - does Tokor's trade predict short-term drift?
+//! * **Adverse-selection tax** - how much of the move happens between
 //!   exchange time and our first-seen time (the cost of acting late)?
 //!
 //! The mid is built from public prints only (tape mid): the recorded book
-//! mid is preferred when available and substitutes trivially — the API
+//! mid is preferred when available and substitutes trivially - the API
 //! takes a generic mid series.
 
 use rust_decimal::Decimal;

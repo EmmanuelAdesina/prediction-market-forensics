@@ -8,13 +8,13 @@
 //! credited only under the rules of [`fill_credit`].
 //!
 //! Module map:
-//! * [`queue`] — queue-ahead estimation under three scenarios
+//! * [`queue`] - queue-ahead estimation under three scenarios
 //!   (Optimistic / Baseline / Conservative).
-//! * [`decision`] — the shared decision vocabulary.
-//! * [`copy_sim`] — exact-copy and intelligent-copy policies.
-//! * [`fill_credit`] — what counts as an executed simulated fill.
-//! * [`portfolio`] — the $49 portfolio simulator.
-//! * [`markout`] — signal-decay measurement from the public tape.
+//! * [`decision`] - the shared decision vocabulary.
+//! * [`copy_sim`] - exact-copy and intelligent-copy policies.
+//! * [`fill_credit`] - what counts as an executed simulated fill.
+//! * [`portfolio`] - the $49 portfolio simulator.
+//! * [`markout`] - signal-decay measurement from the public tape.
 //!
 //! Every function here is a pure function over recorded data: same inputs →
 //! same outputs. No authentication, no order routes, no keys (§12).

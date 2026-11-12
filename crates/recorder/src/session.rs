@@ -3,7 +3,7 @@
 //! Responsibilities (docs/07):
 //! * One live connection at a time; on disconnect the retained book states are
 //!   invalidated (never trusted across a reconnect) and a fresh REST snapshot
-//!   per subscribed token rebuilds them — the ONLY way a book returns to
+//!   per subscribed token rebuilds them - the ONLY way a book returns to
 //!   decision-readiness after an invalidate.
 //! * Reconnects back off exponentially with full jitter, capped.
 //! * All frames are stamped on receipt (wall-clock nanos) and persisted
@@ -15,7 +15,7 @@
 //! * Gap detection (timestamp regression, no-base-state) and staleness flag
 //!   health events AND trigger an immediate REST snapshot rescue for that
 //!   token; books that go stale are refused by decision paths (consumers gate
-//!   on `is_decision_ready`) — the recorder only records.
+//!   on `is_decision_ready`) - the recorder only records.
 //!
 //! Strictly read-only public data: no keys, no auth, no orders.
 
@@ -338,7 +338,7 @@ fn state_row(
 
 /// Live recorder: owns the supervisor, the connector task, and the
 /// persistence workers. Dropping the handle detaches the tasks (the shutdown
-/// command is the clean stop path — workers drain what they hold).
+/// command is the clean stop path - workers drain what they hold).
 pub struct RecorderHandle {
     pub cmd_tx: mpsc::Sender<RecorderCommand>,
 }
@@ -723,7 +723,7 @@ mod session_tests {
     }
 
     /// A gap (timestamp regression) yields a health event AND a refresh
-    /// request — the session rescues that token from REST immediately.
+    /// request - the session rescues that token from REST immediately.
     #[test]
     fn gap_detected_triggers_snapshot_rescue() {
         let mut eng = RecordingEngine::new("sess-1", config());

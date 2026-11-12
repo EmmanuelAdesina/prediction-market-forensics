@@ -1,18 +1,14 @@
-//! `tokor` — operator CLI for the Tokor engine (Phase 1: data foundation).
+//! `tokor` - operator CLI for the Tokor engine (Phase 1: data foundation).
 //!
 //! Hard restriction: this binary performs ONLY read-only public-data work
 //! (wallet activity ingestion, market metadata, classification, position
 //! reconstruction, reconciliation, reporting). No order placement, no
-//! authentication, no key material — enforced by the dependency graph
+//! authentication, no key material - enforced by the dependency graph
 //! (no CLOB order routes exist in this crate).
-
-mod commands;
-mod config;
-mod markets;
 
 use std::path::PathBuf;
 
-use config::AppConfig;
+use tokor_application::{commands, config::AppConfig, registry};
 
 struct Cli {
     config_path: PathBuf,
@@ -58,6 +54,22 @@ enum Command {
         limit: Option<u64>,
         scenario: Option<String>,
     },
+    RegistrySync {
+        assets: Vec<String>,
+        universe: registry::Universe,
+        max_pages: u64,
+    },
+    RegistryInspect {
+        asset: Option<String>,
+        eligible_only: bool,
+        limit: u64,
+    },
+    RegistryExport {
+        asset: Option<String>,
+        eligible_only: bool,
+        limit: u64,
+        output: PathBuf,
+    },
     Report,
 }
 
@@ -94,6 +106,13 @@ COMMANDS:
                                          shadow-exec simulators over recorded
                                          market data (Phase 2 §5; baseline
                                          default; submitted ≠ executed).
+  registry-sync [--assets BTC,ETH] [--universe active|resolved|all] [--max-pages N]
+                                         Sync the ETH/BTC dip-market registry from
+                                         the Gamma hit-price listing (read-only).
+  registry-inspect [--asset BTC|ETH] [--eligible] [--limit N]
+                                         Registry counts + rows.
+  registry-export [--asset BTC|ETH] [--eligible] [--limit N] --output PATH
+                                         Deterministic JSON registry export.
   report                                 Print a data-foundation status report."
         .to_string()
 }
@@ -169,6 +188,35 @@ fn parse_args() -> Result<Cli, String> {
         Some("shadow-run") => Command::ShadowRun {
             limit: flag_value_u64(&flags, "--limit"),
             scenario: flag_value(&flags, "--scenario"),
+        },
+        Some("registry-sync") => Command::RegistrySync {
+            assets: flag_value(&flags, "--assets")
+                .map(|s| s.split(',').map(str::trim).map(String::from).collect())
+                .unwrap_or_else(|| vec!["BTC".into(), "ETH".into()]),
+            universe: match flag_value(&flags, "--universe").as_deref() {
+                Some("active") => registry::Universe::Active,
+                Some("resolved") => registry::Universe::Resolved,
+                Some("all") | None => registry::Universe::All,
+                Some(other) => {
+                    return Err(format!(
+                        "invalid --universe {other:?} (active|resolved|all)"
+                    ))
+                }
+            },
+            max_pages: flag_value_u64(&flags, "--max-pages").unwrap_or(100),
+        },
+        Some("registry-inspect") => Command::RegistryInspect {
+            asset: flag_value(&flags, "--asset"),
+            eligible_only: flags.iter().any(|(f, _)| f == "--eligible"),
+            limit: flag_value_u64(&flags, "--limit").unwrap_or(20),
+        },
+        Some("registry-export") => Command::RegistryExport {
+            asset: flag_value(&flags, "--asset"),
+            eligible_only: flags.iter().any(|(f, _)| f == "--eligible"),
+            limit: flag_value_u64(&flags, "--limit").unwrap_or(100_000),
+            output: flag_value_path(&flags, "--output")
+                .or_else(|| flag_value_path(&flags, "--out"))
+                .ok_or("registry-export needs --output PATH\n{}".to_string() + &usage())?,
         },
         Some("report") => Command::Report,
         Some(other) => return Err(format!("unknown command {other:?}\n{}", usage())),
@@ -263,6 +311,42 @@ async fn main() {
             limit.unwrap_or(1_000),
             scenario.as_deref().unwrap_or("baseline"),
         ),
+        Command::RegistrySync {
+            assets,
+            universe,
+            max_pages,
+        } => {
+            match assets
+                .iter()
+                .map(|s| tokor_domain::dip::Asset::parse(s))
+                .collect::<Result<Vec<_>, String>>()
+            {
+                Ok(req) if !req.is_empty() => {
+                    registry::registry_sync(&cfg, &req, *universe, *max_pages).await
+                }
+                Ok(_) => Err("registry-sync: no valid assets in request".into()),
+                Err(e) => Err(e),
+            }
+        }
+        Command::RegistryInspect {
+            asset,
+            eligible_only,
+            limit,
+        } => match asset.as_deref().map(tokor_domain::dip::Asset::parse) {
+            Some(Err(e)) => Err(e),
+            Some(Ok(a)) => registry::registry_inspect(&cfg, Some(a), *eligible_only, *limit),
+            None => registry::registry_inspect(&cfg, None, *eligible_only, *limit),
+        },
+        Command::RegistryExport {
+            asset,
+            eligible_only,
+            limit,
+            output,
+        } => match asset.as_deref().map(tokor_domain::dip::Asset::parse) {
+            Some(Err(e)) => Err(e),
+            Some(Ok(a)) => registry::registry_export(&cfg, Some(a), *eligible_only, *limit, output),
+            None => registry::registry_export(&cfg, None, *eligible_only, *limit, output),
+        },
     };
 
     match outcome {

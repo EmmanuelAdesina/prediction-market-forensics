@@ -76,7 +76,7 @@ pub struct ActivityEvent {
     /// Share quantity when the event touches inventory.
     pub size: Option<rust_decimal::Decimal>,
     /// USDC cash moved (source-serialized amount; REDEEM rows are 0 here and
-    /// proceeds are derived at $1/share — never "fabricated" into this field).
+    /// proceeds are derived at $1/share - never "fabricated" into this field).
     pub usdc_size: Option<rust_decimal::Decimal>,
     pub price: Option<rust_decimal::Decimal>,
     pub outcome_index: Option<i64>,
@@ -302,7 +302,7 @@ pub fn assign_occurrence_ordinals(events: &mut [ActivityEvent]) {
 }
 
 /// Parsed page of activity events (lenient envelope: `data` may be absent on
-/// an empty terminal page; `pagination` presence is NOT required here — the
+/// an empty terminal page; `pagination` presence is NOT required here - the
 /// positions endpoint showed the API nests it; the activity feed does too.
 pub struct ActivityBatch {
     pub events: Vec<ActivityEvent>,

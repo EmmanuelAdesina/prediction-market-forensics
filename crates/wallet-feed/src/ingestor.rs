@@ -23,7 +23,7 @@ pub struct FullHistoryIngestor<'a, P: WalletFeedProvider> {
     /// True → walk to the start of history (dedupe-safe). False → sync only
     /// new activity from the durable cursor forward.
     pub full: bool,
-    /// Pause between pages — politeness for the Data API.
+    /// Pause between pages - politeness for the Data API.
     pub page_pause: std::time::Duration,
     /// Hard per-run budget; a bigger history is simply continued next run.
     pub max_pages: u64,
@@ -186,7 +186,7 @@ impl<'a, P: WalletFeedProvider> FullHistoryIngestor<'a, P> {
         Ok(progress)
     }
 
-    /// Reconstructible URL for the forensic record — same builder used by
+    /// Reconstructible URL for the forensic record - same builder used by
     /// providers, recorded for feasibility checks during restart analysis.
     #[allow(dead_code)]
     fn record_url(&self, filters: &ActivityFilters, cursor: Option<&str>) -> String {

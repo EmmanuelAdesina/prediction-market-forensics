@@ -212,7 +212,7 @@ pub fn classify_markets(cfg: &AppConfig, reset: bool) -> CmdResult<String> {
     let totals = MarketRepository::classified_markets(&database)
         .map_err(|e| format!("reload classified: {e}"))?;
     Ok(format!(
-        "newly classified: {classified} (crypto {}, non_crypto {}, unknown {}) — totals: CRYPTO {} of {}",
+        "newly classified: {classified} (crypto {}, non_crypto {}, unknown {}) - totals: CRYPTO {} of {}",
         counts[0],
         counts[1],
         counts[2],
@@ -364,7 +364,7 @@ pub async fn reconcile_positions(cfg: &AppConfig) -> CmdResult<String> {
         .map_err(|e| format!("finish run: {e}"))?;
 
     let mut out = format!(
-        "reconciliation {run_id}: {} api positions — MATCH {match_}, MISMATCH {mismatch}, API_ONLY {api_only}; pages {page_index}; verdict counts: {verdict_counts:?}",
+        "reconciliation {run_id}: {} api positions - MATCH {match_}, MISMATCH {mismatch}, API_ONLY {api_only}; pages {page_index}; verdict counts: {verdict_counts:?}",
         rows.len(),
     );
     if !notes.is_empty() {
@@ -430,7 +430,7 @@ fn compare_position(
 
     // OPEN positions must match size + avg price. Positions whose history
     // we flagged as incomplete are recorded as MISMATCH even when sizes
-    // coincide — the provenance is different and must stay visible.
+    // coincide - the provenance is different and must stay visible.
     let history_gap = ours
         .as_ref()
         .map(|p| p.history_probably_incomplete)
@@ -639,8 +639,8 @@ pub async fn ingest_positions(cfg: &AppConfig) -> CmdResult<String> {
 
     // The Data API can return the SAME token under two statuses (observed:
     // one token as both OPEN and CLOSED; status=OPEN pages embedding
-    // REDEEMABLE rows). positions_snapshot is keyed UNIQUE(token_id) — a
-    // point-in-time "current state per token" — so dedupe with status
+    // REDEEMABLE rows). positions_snapshot is keyed UNIQUE(token_id) - a
+    // point-in-time "current state per token" - so dedupe with status
     // priority REDEEMABLE > OPEN > CLOSED (most actionable state wins).
     let mut by_token: std::collections::HashMap<String, PositionSnapshotRow> =
         std::collections::HashMap::new();
@@ -830,7 +830,7 @@ fn write_fees_parquet(cfg: &AppConfig, out: &std::path::Path) -> CmdResult<Strin
     use std::fs::File;
     use std::sync::Arc;
 
-    const DP: i8 = 9; // 1e-9 USDC resolution — far beyond source precision
+    const DP: i8 = 9; // 1e-9 USDC resolution - far beyond source precision
     let database = db(cfg)?;
     let pairs = tokor_persistence::activity::ActivityRepository::load_fee_rows(&database)
         .map_err(|e| format!("load fee rows: {e}"))?;
@@ -1128,7 +1128,7 @@ fn write_inventory_parquet(cfg: &AppConfig, out: &std::path::Path) -> CmdResult<
         tokor_persistence::activity::ActivityRepository::load_positions_snapshot(&database)
             .map_err(|e| format!("load positions snapshot: {e}"))?;
     if positions.is_empty() {
-        return Err("positions snapshot empty — run ingest-positions first".to_string());
+        return Err("positions snapshot empty - run ingest-positions first".to_string());
     }
 
     // Per-token activity sums.
@@ -1397,7 +1397,7 @@ pub fn report(cfg: &AppConfig) -> CmdResult<String> {
 
 // ------------------------------------------------- recorder (Phase 2 §3–§4)
 
-/// Wall-clock UTC nanos — the stamp currency for §4 latency chains.
+/// Wall-clock UTC nanos - the stamp currency for §4 latency chains.
 fn now_ns() -> i64 {
     chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
 }
@@ -1441,7 +1441,7 @@ pub async fn record_market(cfg: &AppConfig, tokens: &[String]) -> CmdResult<Stri
 
 /// Phase 2 §4: independent-latency probe of the wallet-feed → decision chain.
 ///
-/// Measures OUR pipeline stages with wall-clock nanos — it makes NO claim
+/// Measures OUR pipeline stages with wall-clock nanos - it makes NO claim
 /// about exchange publication latency (wallet timestamps are 1s-resolution;
 /// docs/07 §3). Uses the raw provider WITHOUT the retry wrapper: a retry
 /// would contaminate the latency distribution.
@@ -1484,7 +1484,7 @@ pub async fn observe_source(cfg: &AppConfig, probes: u64) -> CmdResult<String> {
         let http_response_ns = now_ns();
 
         // First-seen: first normalized fill located in the parsed batch
-        // (provider-internal parse is included in this stage — documented).
+        // (provider-internal parse is included in this stage - documented).
         let Some(fill) = page.batch.fills.first() else {
             tracing::warn!(probe, "probe page had no TRADE fills; skipping");
             continue;
@@ -1567,7 +1567,7 @@ fn percentile(sorted: &[f64], q: f64) -> f64 {
 
 /// Phase 2 §5: replay stored fills through the shadow-exec simulators over
 /// the RECORDED market data (books + public trades). With no capture yet,
-/// every signal is `DataInsufficient` — the command validates the §5→§9
+/// every signal is `DataInsufficient` - the command validates the §5→§9
 /// pipeline end-to-end and becomes the production path once `record-market`
 /// has accumulated coverage.
 pub fn shadow_run(cfg: &AppConfig, limit: u64, scenario: &str) -> CmdResult<String> {

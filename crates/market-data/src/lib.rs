@@ -69,6 +69,38 @@ impl MarketDataClient {
         self.get_json(&url).await
     }
 
+    /// Fetch one page of the Gamma events listing filtered by tag slug.
+    ///
+    /// Verified endpoint: `GET {gamma}/events?tag_slug=<t>&closed=<b>&limit=<n>&offset=<o>`
+    /// - returns a JSON array of event objects, each embedding its `markets`
+    /// array (verified against live responses 2026-11). Note: multiple
+    /// `tag_slug` params do NOT intersect (verified); callers must filter by
+    /// asset tags locally.
+    pub async fn gamma_events_by_tag(
+        &self,
+        tag_slug: &str,
+        closed: bool,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<serde_json::Value>, MarketDataError> {
+        let url = format!(
+            "{}/events?tag_slug={}&closed={}&limit={}&offset={}",
+            self.gamma_base.trim_end_matches('/'),
+            urlencode(tag_slug),
+            closed,
+            limit,
+            offset
+        );
+        let val = self.get_json(&url).await?;
+        match val {
+            serde_json::Value::Array(items) => Ok(items),
+            other => Err(MarketDataError::Transport(format!(
+                "gamma events listing: expected JSON array, got {}",
+                other
+            ))),
+        }
+    }
+
     /// Fetch and shape a MarketRef from the CLOB payload.
     pub async fn enriched_market_ref(
         &self,
@@ -135,6 +167,20 @@ fn str_val(v: &serde_json::Value) -> Option<String> {
     }
 }
 
+/// Minimal percent-encoding for query parameters (tags are slugs: safe set).
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -168,5 +214,33 @@ mod tests {
         );
         assert_eq!(mref.minimum_tick_size.as_deref(), Some("0.01"));
         assert!(mref.active.unwrap());
+    }
+
+    #[tokio::test]
+    async fn gamma_events_listing_parses_array() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(wiremock::matchers::query_param("tag_slug", "hit-price"))
+            .and(wiremock::matchers::query_param("closed", "true"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {
+                    "slug": "what-price-will-bitcoin-hit-in-2025",
+                    "tags": [{"slug": "bitcoin"}, {"slug": "hit-price"}],
+                    "markets": [{"question": "Will Bitcoin dip to $90,000?"}]
+                }
+            ])))
+            .mount(&server)
+            .await;
+
+        let client = MarketDataClient::new("http://unused.example", &server.uri()).unwrap();
+        let events = client
+            .gamma_events_by_tag("hit-price", true, 100, 0)
+            .await
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0]["markets"][0]["question"],
+            "Will Bitcoin dip to $90,000?"
+        );
     }
 }

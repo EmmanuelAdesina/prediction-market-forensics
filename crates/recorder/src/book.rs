@@ -2,7 +2,7 @@
 //! staleness detection.
 //!
 //! Invariants (docs/07):
-//! * A valid book is NEVER constructed from deltas alone — a delta arriving
+//! * A valid book is NEVER constructed from deltas alone - a delta arriving
 //!   without a base state yields `NeedsSnapshot`, not a fabricated book.
 //! * A hash discontinuity invalidates the local state and forces a snapshot
 //!   refresh; the refreshed state is labeled `ReconciledAfterGap`.
@@ -82,7 +82,7 @@ impl BookState {
     }
 
     /// Rehydrate a state from persisted `to_json` strings. Returns None if
-    /// either side is not the expected `[["price","size"], ...]` shape —
+    /// either side is not the expected `[["price","size"], ...]` shape -
     /// callers treat that as no usable book (DATA_INSUFFICIENT), never as
     /// an empty book.
     pub fn from_json(
@@ -118,9 +118,9 @@ impl BookState {
 /// Why an update could not be normalized.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GapReason {
-    /// Delta with no base snapshot — never fabricate.
+    /// Delta with no base snapshot - never fabricate.
     NoBaseState,
-    /// The delta's exchange timestamp regresses below the last applied one —
+    /// The delta's exchange timestamp regresses below the last applied one -
     /// evidence that at least one message was missed or reordered. (The
     /// protocol's `hash` field is the POST-update book hash: consecutive
     /// events never match, so hashes are recorded for reconciliation against
@@ -133,7 +133,7 @@ pub enum GapReason {
 pub enum ApplyOutcome {
     Normalized(BookState),
     NeedsSnapshot(GapReason),
-    /// Message for a different asset or an empty delta — recorded, no state.
+    /// Message for a different asset or an empty delta - recorded, no state.
     Ignored,
 }
 
@@ -220,7 +220,7 @@ impl BookEngine {
             return ApplyOutcome::NeedsSnapshot(GapReason::NoBaseState);
         };
         // Exchange-timestamp monotonicity: a regression means we missed or
-        // reordered messages — the local state is integrity-suspect until a
+        // reordered messages - the local state is integrity-suspect until a
         // snapshot refresh (gap_pending blocks decisions).
         if let (Some(last), Some(got)) = (&current.exchange_ts, &msg.timestamp) {
             if let (Some(l), Some(g)) = (parse_exchange_ts(last), parse_exchange_ts(got)) {
@@ -275,7 +275,7 @@ impl BookEngine {
     }
 
     /// Integrity-suspect entry points (reconnect, detected gap): the
-    /// retained state is DROPPED and the gap flag set — deltas cannot extend
+    /// retained state is DROPPED and the gap flag set - deltas cannot extend
     /// a suspect book, so the next delta hits `NoBaseState` and the session
     /// rescues the token from REST. The last good state remains in the
     /// persistence layer for forensics.
@@ -294,7 +294,7 @@ impl BookEngine {
 // -- helpers -----------------------------------------------------------------
 
 /// Normalize an exchange timestamp string to milliseconds for monotonicity
-/// checks. Tolerates both epoch-seconds (≤ 1e11) and epoch-milliseconds —
+/// checks. Tolerates both epoch-seconds (≤ 1e11) and epoch-milliseconds -
 /// the protocol has used both across versions; equality/ordering is what
 /// matters, not the unit.
 fn parse_exchange_ts(ts: &str) -> Option<u128> {

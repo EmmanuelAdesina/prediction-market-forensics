@@ -55,7 +55,7 @@ impl ReportRepository for Database {
                 r.get(0)
             })?;
         // remaining_inventory is stored as a string decimal; SQL can't compare
-        // reliably — fetch and compare at the decimal level here.
+        // reliably - fetch and compare at the decimal level here.
         let mut stmt = conn.prepare(
             "SELECT remaining_inventory FROM positions_reconstructed WHERE remaining_inventory NOT IN ('0')",
         )?;

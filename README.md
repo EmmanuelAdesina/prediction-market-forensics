@@ -2,7 +2,7 @@
 
 # Prediction Market Forensics
 
-**An evidence-first research engine for prediction markets — on-chain trader
+**An evidence-first research engine for prediction markets - on-chain trader
 verification, public market-data capture, and copy-trading feasibility
 analysis. Built in Rust. Every number reproducible. No keys, no orders, no
 secrets.**
@@ -20,7 +20,7 @@ secrets.**
 ## What this is
 
 A forensic quant laboratory that asks one question about a prediction-market
-wallet — **can its results be replicated from public data alone?** — and
+wallet - **can its results be replicated from public data alone?** - and
 answers it the hard way: by reconstructing the trader's complete history
 from public APIs, verifying every fill, fee, and share **against the
 blockchain itself**, recording live order-book microstructure, and simulating
@@ -34,22 +34,22 @@ never signs, never submits.
 
 | # | Question | Verdict | Evidence |
 |---|---|---|---|
-| 1 | Can the trader's economics be reconstructed? | **Yes — to the cent** | 13,965 fills / $3.97M notional reconciled; 0 unexplained fees across the corpus |
-| 2 | Is the fee model real? | **Yes — triple-verified** | feed-side, model-side, **and on-chain** (`fee` field in the v2 exchange events) |
-| 3 | Who provides liquidity? | **~90% maker** | 90.2% of fills / 59.3% of volume / 62.1% of notional — confirmed on-chain, side-flags 100% |
-| 4 | Can a <$50 follower copy the *fills*? | **Unlikely** | mirroring the maker fills costs **2.062% in taker fees alone** ($50,769 on $2.46M) — fees the studied trader provably never paid; spread + queue still unmeasured |
-| 5 | Can the *strategy* be reverse-engineered? | **Yes — it's a dip-ladder** | see below; two ladders already resolved in the trader's favor in public data |
+| 1 | Can the trader's economics be reconstructed? | **Yes - to the cent** | 13,965 fills / $3.97M notional reconciled; 0 unexplained fees across the corpus |
+| 2 | Is the fee model real? | **Yes - triple-verified** | feed-side, model-side, **and on-chain** (`fee` field in the v2 exchange events) |
+| 3 | Who provides liquidity? | **~90% maker** | 90.2% of fills / 59.3% of volume / 62.1% of notional - confirmed on-chain, side-flags 100% |
+| 4 | Can a <$50 follower copy the *fills*? | **Unlikely** | mirroring the maker fills costs **2.062% in taker fees alone** ($50,769 on $2.46M) - fees the studied trader provably never paid; spread + queue still unmeasured |
+| 5 | Can the *strategy* be reverse-engineered? | **Yes - it's a dip-ladder** | see below; two ladders already resolved in the trader's favor in public data |
 
 ## The discovery: a dip-ladder strategy
 
 The trader's dominant activity is a mechanical, one-way accumulation pattern
 on crypto "will X dip to $Y" markets:
 
-- **BUY only** — zero sells, ever (82/0, 17/0, 15/0, 14/0 across tracked markets)
-- **Maker laddering** — fixed-size resting clips at successively lower rungs
+- **BUY only** - zero sells, ever (82/0, 17/0, 15/0, 14/0 across tracked markets)
+- **Maker laddering** - fixed-size resting clips at successively lower rungs
   as the market falls (0.51 → 0.31 → 0.22 → 0.15 → 0.08 on ETH-$1,750)
-- **Martingale scaling** — 30,000-share clips near the bottom
-- **Hold to resolution** — two ladders have already resolved **in the trader's
+- **Martingale scaling** - 30,000-share clips near the bottom
+- **Hold to resolution** - two ladders have already resolved **in the trader's
   favor**: ETH-$1,500 **+$14,648**, XRP +$2.55
 
 The inputs (price, time, rung spacing) are entirely public. Full write-up:
@@ -120,6 +120,11 @@ tokor --config config/default.toml record-market <TOKEN_ID>...
 # replay stored fills through the shadow simulators
 tokor --config config/default.toml shadow-run --scenario baseline
 
+# build the canonical ETH/BTC dip-market registry (read-only discovery)
+tokor --config config/default.toml registry-sync --assets BTC,ETH --universe all --max-pages 50
+tokor --config config/default.toml registry-inspect --eligible
+tokor --config config/default.toml registry-export --eligible --output data/markets/eth_btc_registry.json
+
 # gates
 cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 ```
@@ -139,6 +144,7 @@ cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace
 | [`docs/08`](docs/08-shadow-execution-model.md) | shadow-execution model |
 | [`docs/09`](docs/09-execution-feasibility-report.md) | execution-feasibility report (ten questions) |
 | [`docs/10`](docs/10-strategy-inference.md) | **strategy inference: the dip-ladder** |
+| [`docs/11`](docs/11-dip-market-registry.md) | **dip-market registry** (discovery, resolution verification, persistence) |
 
 ## Methodology & ethics
 
@@ -157,4 +163,4 @@ The repository name describes the method, not the subject.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).

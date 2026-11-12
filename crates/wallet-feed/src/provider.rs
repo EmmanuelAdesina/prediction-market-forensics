@@ -1,7 +1,7 @@
 //! `WalletFeedProvider` abstraction + the Data API v2 implementation.
 //!
 //! Contract (spec §6):
-//! - Follow `next_cursor` while `has_more` — the *ingestor* does that;
+//! - Follow `next_cursor` while `has_more` - the *ingestor* does that;
 //!   the provider fetches exactly ONE page per call.
 //! - Filters must be resent identically; the provider builds the URL from
 //!   `ActivityFilters` so a page walk can't silently drift.
@@ -90,7 +90,7 @@ impl<P: WalletFeedProvider> RetryingProvider<P> {
     }
 
     /// Rate-limit delay: the base full-jitter backoff, raised to the server's
-    /// `Retry-After` hint (seconds) when present. The hint is capped at 60s —
+    /// `Retry-After` hint (seconds) when present. The hint is capped at 60s -
     /// a hostile/huge hint must not stall a walk for hours (observed once
     /// live: an unbounded hint pinned a page fetch for ~an hour).
     fn effective_delay_ms(&self, attempt: u32, hint_secs: Option<u64>) -> u64 {
@@ -196,7 +196,7 @@ mod tests {
     use super::*;
     use tokor_domain::activity::ActivityType;
 
-    /// Test double: never fetched — the delay math below never hits the wire.
+    /// Test double: never fetched - the delay math below never hits the wire.
     struct NoopProvider;
 
     impl WalletFeedProvider for NoopProvider {
@@ -241,7 +241,7 @@ mod tests {
     }
 
     /// The rate-limit delay honors the server hint, but never beyond the 60s
-    /// cap — a huge hint must not stall a walk for hours (observed live).
+    /// cap - a huge hint must not stall a walk for hours (observed live).
     #[test]
     fn retry_after_hint_is_capped() {
         let p = RetryingProvider::new(NoopProvider);

@@ -2,7 +2,7 @@
 //!
 //! Everything flows through this crate: raw wallet activity, market metadata,
 //! ingestion cursors, reconstructed positions. Normalization must never discard
-//! information — raw JSON is always retained alongside normalized values.
+//! information - raw JSON is always retained alongside normalized values.
 //!
 //! Money and prices use `rust_decimal::Decimal` everywhere in the domain layer.
 //! Floating point is only permitted at the JSON-decoding boundary, where external
@@ -11,6 +11,7 @@
 pub mod activity;
 pub mod activity_events;
 pub mod classification;
+pub mod dip;
 pub mod error;
 pub mod fees;
 pub mod market;
@@ -25,6 +26,10 @@ pub use activity_events::{
     ActivityEvent, ActivityEventRaw,
 };
 pub use classification::{ClassifierEvidence, CryptoVerdict};
+pub use dip::{
+    Asset, BarrierSemantics, DipMarket, DipNormalization, FeeInfo, MarketStatus, RejectionReason,
+    ResolutionStatus, ResolutionVerification,
+};
 pub use error::IngestionError;
 pub use market::MarketRef;
 pub use position::{Lot, PositionBook, PositionState};

@@ -18,7 +18,7 @@ pub enum Decision {
     Wait,
     /// Signal fails policy checks (fee-tier economics, category filter).
     Reject,
-    /// The fill would increase exposure we are capped on — copy only the
+    /// The fill would increase exposure we are capped on - copy only the
     /// reduction (net against the existing holding).
     ReduceExistingPosition,
     /// No usable book/trade evidence; counted, never simulated.
@@ -38,7 +38,7 @@ impl Decision {
     }
 }
 
-/// One simulated submission — the ONLY unit the portfolio absorbs, and only
+/// One simulated submission - the ONLY unit the portfolio absorbs, and only
 /// through evidenced fills (`fill_credit`), never through `submitted_qty`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Submission {

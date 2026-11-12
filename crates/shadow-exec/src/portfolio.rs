@@ -1,6 +1,6 @@
 //! The $49 portfolio simulator (docs/08 §1, §6 rule 3).
 //!
-//! Absorbs only EVIDENCED fills (`fill_credit` outcomes) — never raw
+//! Absorbs only EVIDENCED fills (`fill_credit` outcomes) - never raw
 //! submissions. Gross notional is hard-capped at the budget; overflow is
 //! refused, not silently absorbed. Shorting is out of scope for a small
 //! follower: sells only reduce held shares (a copy of an opposite-side
@@ -17,7 +17,7 @@ pub const BUDGET_USDC: Decimal = Decimal::from_parts(49, 0, 0, false, 0);
 /// One token's position.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Position {
-    /// Net shares (always ≥ 0 — no shorting).
+    /// Net shares (always ≥ 0 - no shorting).
     pub shares: Decimal,
     /// Average entry price of the position.
     pub avg_price: Decimal,
@@ -32,12 +32,12 @@ pub struct SimFill {
     pub side: Side,
     pub price: Decimal,
     pub qty: Decimal,
-    /// Taker fee in USDC (zero for passive fills — on-chain fact, docs/06
+    /// Taker fee in USDC (zero for passive fills - on-chain fact, docs/06
     /// §4.1). Computed with the verified model upstream.
     pub fee: Decimal,
 }
 
-/// Portfolio error — the simulator refuses impossible states.
+/// Portfolio error - the simulator refuses impossible states.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PortfolioError {
     /// Gross-notional cap would be violated by this entry.
@@ -183,7 +183,7 @@ mod tests {
         assert_eq!(p.cash, dec!(38)); // 49 − 5 − 6
         let pos = p.positions.get("T1").unwrap();
         assert_eq!(pos.fees_paid, dec!(1));
-        // Fees are USDC on top — never inside the share basis (docs/06 §5).
+        // Fees are USDC on top - never inside the share basis (docs/06 §5).
         assert_eq!(pos.avg_price, dec!(0.50));
     }
 

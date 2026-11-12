@@ -1,6 +1,6 @@
-# 02 — Fee Model Investigation (Phase 1.5)
+# 02 - Fee Model Investigation (Phase 1.5)
 
-**Status: CLOSED — model verified on the complete fill history; zero unexplained rows.**
+**Status: CLOSED - model verified on the complete fill history; zero unexplained rows.**
 Artifacts: `data/derived/fee_reconciliation.json` (13,948 rows), Rust implementation
 `crates/domain/src/fees.rs` + fixtures `crates/domain/src/fee_tests.rs`, CLI
 `tokor derive-fees` (persists to `fee_reconciliation` table; emits
@@ -45,7 +45,7 @@ cash = gross + fee        with |cash − gross − fee| ≤ 2×10⁻⁵ (float e
 Premium structure: the fee as a fraction of gross notional is
 `fee/gross = feeRate × (1−p)`. Across all 1,361 taker fills the observed
 premium spans **0.007%–6.993%** (crypto median 3.99%), driven purely by the
-entry price — the dip-ladder family bought at `p ≈ 0.05..0.07`, where the
+entry price - the dip-ladder family bought at `p ≈ 0.05..0.07`, where the
 premium is `0.07×(1−p) ≈ 6.51–6.65%`, exactly the band Phase 1 could not
 explain. Worked example (a formerly "rejected" row):
 `2400 × 0.07 × 0.05 × 0.95 = 7.98` ⇒ `usdc_size` of price 0.05 × 2400 = 120.00
@@ -57,7 +57,7 @@ explain. Worked example (a formerly "rejected" row):
 |---|---|---|
 | `VERIFIED_GROSS_NOTIONAL` | 12,587 | cash == gross exactly: maker fills (12,586) + one min-size WTI row |
 | `VERIFIED_FEE_INCLUSIVE` | 1,361 | cash == gross + fee within the envelope |
-| `UNKNOWN_FEE_SEMANTICS` / `UNEXPLAINED` | **0** | — |
+| `UNKNOWN_FEE_SEMANTICS` / `UNEXPLAINED` | **0** | - |
 
 Fee-bearing split by rate: 0.07 → 843 rows; 0.04 → 517 rows; 0.05 → 1 row.
 No fill ever required a category rate other than the published one.
@@ -71,7 +71,7 @@ No fill ever required a category rate other than the published one.
 | gross notional | 2,461,100.60 | 1,464,251.42 | **62.70%** |
 
 The divergence matters for replication: Tokor's *typical* fill is a small
-resting order, but the *taker sweeps* are the large ones — a follower crossing
+resting order, but the *taker sweeps* are the large ones - a follower crossing
 the spread pays fees on the biggest flow while Tokor paid none of it.
 
 Role evidence note: the maker/taker split above is **inferred from cash
@@ -106,7 +106,7 @@ sweep whose `usdc_size` embeds the category fee.**
 | cash − gross | 33,741.483421 USDC |
 | Σ model fee (round5) | 33,741.488880 USDC |
 
-Aggregate drift **0.00546 USDC over $3.96M (1.4×10⁻⁷ relative)** — the sum of
+Aggregate drift **0.00546 USDC over $3.96M (1.4×10⁻⁷ relative)** - the sum of
 per-row serialization residuals. There is no missing or extra money anywhere;
 the residual is exactly the float-envelope accumulation documented in §2.
 
@@ -120,7 +120,7 @@ the residual is exactly the float-envelope accumulation documented in §2.
   with `gross_usdc()` separating the fee-free notional; the four money
   quantities (displayed price / gross / fee / total cash) are distinct fields
   with regression tests (`crates/domain/src/accounting_tests.rs`).
-- **The 82 "rejected" rows were taker sweeps** — all VERIFIED_FEE_INCLUSIVE.
+- **The 82 "rejected" rows were taker sweeps** - all VERIFIED_FEE_INCLUSIVE.
 - The earlier "floor-truncation" rounding hypothesis (joint floor5) was
   **wrong**: the residuals split across HALF_UP tie cases and 2-ulp
   outliers that only binary-float serialization explains. The model above
@@ -130,8 +130,8 @@ the residual is exactly the float-envelope accumulation documented in §2.
   `rate×(1−p)` exceeds 5% (first observed live on 2026-11-10: three crypto
   7%-rate rows at 5.18–5.74% premium, txs `0xdb01bd6a…`, `0x675d4619…`,
   `0xa0a8a4cb…`). `SourceFill::from_raw` now accepts any row whose cash lies
-  in `[gross − 2×10⁻⁵, gross × 1.07 + 2×10⁻⁵]` — verified over the full
-  13,956-row raw corpus with 0 failures — and out-of-band rows are still
+  in `[gross − 2×10⁻⁵, gross × 1.07 + 2×10⁻⁵]` - verified over the full
+  13,956-row raw corpus with 0 failures - and out-of-band rows are still
   rejected and preserved raw (never force-fit).
 
 ## 7. Engine implementation and tests
@@ -139,9 +139,9 @@ the residual is exactly the float-envelope accumulation documented in §2.
 - `crates/domain/src/fees.rs`: `FeeCategory` (published rates incl.
   economics/culture/weather/other 0.05, mentions/tech 0.04, geopolitics 0),
   `charged_fee` (HALF_UP @ 5 dp, min-fee drop), `classify_fill` returning
-  `(FillVerdict, FillFace)` — maker/taker derived from observed semantics,
+  `(FillVerdict, FillFace)` - maker/taker derived from observed semantics,
   never assumed.
-- `crates/domain/src/fee_tests.rs`: 10 tests incl. **live fixtures** —
+- `crates/domain/src/fee_tests.rs`: 10 tests incl. **live fixtures** -
   taker crypto sweep tx `0xb31294…`, finance taker tx `0xe114afcd…`, **maker
   WTI fill tx `0xb3973625…` (would-be fee 71.70, charged 0)**, min-fee
   boundary pair (9.939×10⁻⁶ dropped vs 1.0009×10⁻⁵ charged), envelope
@@ -164,7 +164,7 @@ the residual is exactly the float-envelope accumulation documented in §2.
 Fee activation is per-market (per-category), not per-fill:
 
 - **158 markets carry both maker and taker fills**: in every one, all taker
-  fills carry exactly one fee rate and all maker fills carry zero — 0
+  fills carry exactly one fee rate and all maker fills carry zero - 0
   violating markets, 0 markets with more than one observed taker rate.
 - **37 taker-only markets**: every taker fill fee-bearing (0 missing).
 

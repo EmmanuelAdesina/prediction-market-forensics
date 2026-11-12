@@ -1,6 +1,6 @@
 //! Manually-labelled classification ground truth.
 //!
-//! Labels derived from reading the market *questions* — deliberately
+//! Labels derived from reading the market *questions* - deliberately
 //! independent from ruleset internals. `icon_marker` indicates which icon
 //! file name the activity record carried ("" = no icon).
 

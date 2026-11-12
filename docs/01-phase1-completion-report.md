@@ -1,9 +1,9 @@
-# Phase 1 — Data Foundation: Completion Report
+# Phase 1 - Data Foundation: Completion Report
 
 **Date:** 2026-11-10
 **Engine:** Tokor Engine (Rust workspace)
 **Subject wallet:** `0xa19cbababc312f9df185e49d7004c249ed1ade6b` ("Tokor")
-**Phase 1 verdict: PASS — gates green, data foundation durable and verified. Exit to Phase 2 approved below.**
+**Phase 1 verdict: PASS - gates green, data foundation durable and verified. Exit to Phase 2 approved below.**
 
 ---
 
@@ -28,7 +28,7 @@ Crates implemented in this phase (27 source files, 5,362 LOC):
 
 Nine additional crates (`bootstrap`, `execution`, `polymarket-adapter`,
 `portfolio`, `reconciliation`, `research`, `risk-engine`, `strategy`,
-`telemetry`) remain **empty scaffolds** reserved for later phases — declared in
+`telemetry`) remain **empty scaffolds** reserved for later phases - declared in
 the Phase 0 plan and intentionally untouched here.
 
 ## 2. Commit trail
@@ -43,7 +43,7 @@ c2cb7a2 domain: verified price-display rule (floor₂(usdc/size)); exec_price ba
 
 ## 3. Architecture
 
-- **Event identity:** SHA-256 `v1|{tx}|{ts}|{condition_id}|{token_id}|{side}|{price}|{size}` — stable, dedup-safe across re-ingest.
+- **Event identity:** SHA-256 `v1|{tx}|{ts}|{condition_id}|{token_id}|{side}|{price}|{size}` - stable, dedup-safe across re-ingest.
 - **Durability contract:** per page, fills + raw response + run accounting + cursor advance commit as **one SQLite transaction**; crash yields all-or-nothing, so restart replays from `last_cursor` without duplication or gaps. Integration test `resume_cursor_after_restart` proves it.
 - **Retries:** bounded retries with jitter for transient upstream failures (429 honors `Retry-After`; 503 retried; unit-tested via wiremock).
 - **All API integrations sit behind trait interfaces** (`WalletFeedProvider`, `MarketDataClient` usage, repos), so tests inject fake servers/adapters.
@@ -52,7 +52,7 @@ c2cb7a2 domain: verified price-display rule (floor₂(usdc/size)); exec_price ba
 
 ## 4. Storage schema
 
-Tables: `acquisition_runs`, `raw_api_pages` (57 rows — every response kept
+Tables: `acquisition_runs`, `raw_api_pages` (57 rows - every response kept
 forensically verbatim), `source_fills`, `wallet_cursor_state`, `markets`,
 `market_tokens`, `positions_reconstructed`, `position_lots_remaining`,
 `position_reconciliations`, `schema_migrations`. Migrations are embedded and
@@ -97,8 +97,8 @@ history; dedup makes the net effect zero).
    basis uses `exec_price = usdc_size/size`, which matches Polymarket's own
    `avg_price = entry_cost/size` semantics confirmed on `/v2/positions`.
 2. **Fee-premium family (82 rows, REJECTED, preserved raw).** $110,098.45 of
-   notional over 448,503.32 shares across 46 markets — exclusively
-   dip-ladder / Up-or-Down crypto markets — carry a systematic
+   notional over 448,503.32 shares across 46 markets - exclusively
+   dip-ladder / Up-or-Down crypto markets - carry a systematic
    **1.0504–1.0567× premium** of `usdc_size` over `price×size`, outside every
    verified interpretation (not the floor rule, not plain arithmetic).
    Strong supporting evidence from Phase 1's live reconciliation: on all 133
@@ -118,7 +118,7 @@ history; dedup makes the net effect zero).
   market). Idempotent COALESCE upserts; raw fields also persisted.
 - Classification `crypto-cls-v0.2.0` (post-enrichment re-evaluation):
   **CRYPTO 1,729 / NON_CRYPTO 263 / UNKNOWN 7** of 1,999.
-  Pre-enrichment baseline was 1,702/261/9 — enrichment sharpened the verdicts
+  Pre-enrichment baseline was 1,702/261/9 - enrichment sharpened the verdicts
   (27 reclassified from evidence gained), consistent with the labelled suite:
   hard exclusions (commodity/FX/equity language, e.g. WTI ladders → NON_CRYPTO)
   win first; UNKNOWN stays available for genuinely ambiguous rows rather than
@@ -157,7 +157,7 @@ Dissection of the 64 MISMATCHes (analysis performed on persisted rows):
 - The remainder are small-magnitude variants of the two patterns above
   (fewer than 1% residual after the 13 resolved exactly).
 
-**Fee arithmetic validated on 133/133 API positions:** `total_cost = entry_cost + entry_fees` holds exactly, so fees are a separate field and excluded from `avg_price` — matching the engine's `exec_price`-based basis without fees.
+**Fee arithmetic validated on 133/133 API positions:** `total_cost = entry_cost + entry_fees` holds exactly, so fees are a separate field and excluded from `avg_price` - matching the engine's `exec_price`-based basis without fees.
 
 ## 11. Engineering gates (all green)
 
@@ -166,7 +166,7 @@ Dissection of the 64 MISMATCHes (analysis performed on persisted rows):
 | `cargo fmt --all -- --check` | ✅ |
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | ✅ (fixed 8 findings incl. doc laziness, `too_many_arguments` via `PageRecord` struct, redundant closures, bool comparison, ref-to-slice clones) |
 | `cargo test --workspace` | ✅ 40 tests, 0 failures (lone-network integration suites use wiremock) |
-| `cargo audit` | ✅ clean — `libsqlite3-sys` 0.30→0.39.1 clears RUSTSEC-2026-0459 (SQLite CVE, medium) |
+| `cargo audit` | ✅ clean - `libsqlite3-sys` 0.30→0.39.1 clears RUSTSEC-2026-0459 (SQLite CVE, medium) |
 | `Cargo.lock` committed | ✅ (243 crates audited) |
 
 ## 12. Known issues / open items
@@ -176,13 +176,13 @@ Dissection of the 64 MISMATCHes (analysis performed on persisted rows):
    shares / 46 markets; 13 reconciliation discrepancies depend exactly on them.
 2. **Invisible disposal channel** for 52 positions (`ours > api`). Next probe:
    CLOB `trades` (maker side), redeem/merge activity types, or on-chain
-   transfer logs — activity feed alone cannot see it.
+   transfer logs - activity feed alone cannot see it.
 3. **7 UNKNOWN market classifications** queued for operator review.
 4. **Enrichment rate limiting** observed originally (serial mode: ~5/min);
    fixed with bounded concurrency but no server-side rate-limit telemetry yet.
 5. The `report` command prints the most recent acquisition run, which after a
    `reconcile-positions` call is the positions run (1 page) rather than the
-   wallet runs — cosmetic; wallet run stats are authoritative in
+   wallet runs - cosmetic; wallet run stats are authoritative in
    `acquisition_runs`.
 
 ## 13. Exit decision
@@ -192,11 +192,11 @@ Tokor's activity an exploitable signal for a ~$50 follower? The data now
 supports a first evidence-based statement:
 
 - The wallet is high-frequency, buy-only, $3.84M deployed over 4 months across
-  2,807 tokens — position tracking alone is feasible from public data with
+  2,807 tokens - position tracking alone is feasible from public data with
   this pipeline.
 - The engine observes entries with exactness (verified price semantics), but
   **exits are invisible** (52/133 open positions imply disposals the feed
-  doesn't show) — any copy strategy must therefore be entry-only unless the
+  doesn't show) - any copy strategy must therefore be entry-only unless the
   disposal channel is captured.
 - Signal quality/latency test is deferred: mirror feasibility depends on how
   quickly fills propagate relative to market impact and whether small-size

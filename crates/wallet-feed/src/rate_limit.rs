@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
 /// Serializes upstream wallet-activity calls with a minimum interval.
-/// Not a token bucket — deliberate pacing for a background ingestor,
+/// Not a token bucket - deliberate pacing for a background ingestor,
 /// not a latency-sensitive trader.
 pub struct Pacer {
     min_interval: Duration,

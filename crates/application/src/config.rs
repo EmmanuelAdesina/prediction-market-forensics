@@ -18,6 +18,8 @@ pub struct AppConfig {
     pub page_pause_ms: u64,
     pub positions_page_limit: u64,
     pub max_retries: u32,
+    pub gamma_page_limit: u64,
+    pub gamma_page_pause_ms: u64,
 }
 
 impl Default for AppConfig {
@@ -32,6 +34,8 @@ impl Default for AppConfig {
             page_pause_ms: 1200,
             positions_page_limit: 500,
             max_retries: 5,
+            gamma_page_limit: 100,
+            gamma_page_pause_ms: 300,
         }
     }
 }
@@ -85,6 +89,12 @@ impl AppConfig {
         if let Some(v) = get_u64("data_api", "max_retries") {
             cfg.max_retries = v.clamp(0, 20) as u32;
         }
+        if let Some(v) = get_u64("gamma", "page_limit") {
+            cfg.gamma_page_limit = v.clamp(1, 500);
+        }
+        if let Some(v) = get_u64("gamma", "page_pause_ms") {
+            cfg.gamma_page_pause_ms = v;
+        }
         cfg.validate()?;
         Ok(cfg)
     }
@@ -107,7 +117,7 @@ impl AppConfig {
                 return Err(format!("{name} is empty"));
             }
             if !url.starts_with("http://") && !url.starts_with("https://") {
-                return Err(format!("{name} must start with http(s):// — got {url:?}"));
+                return Err(format!("{name} must start with http(s):// - got {url:?}"));
             }
         }
         if self.page_limit < 1 || self.page_limit > 1000 {

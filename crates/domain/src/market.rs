@@ -12,7 +12,7 @@ pub struct MarketRef {
     pub title: Option<String>,
     pub market_slug: Option<String>,
     pub event_slug: Option<String>,
-    /// Icon URL — contains asset markers like "BTC+fullsize.png".
+    /// Icon URL - contains asset markers like "BTC+fullsize.png".
     pub icon: Option<String>,
     /// Gamma event tags (slugs), e.g. `["crypto","ethereum","price"]`.
     pub tags: Option<Vec<String>>,
